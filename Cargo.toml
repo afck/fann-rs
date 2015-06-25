@@ -1,0 +1,16 @@
+[package]
+name = "fann"
+version = "0.1.0"
+authors = ["Andreas Fackler <AndreasFackler@gmx.de>"]
+license = "LGPL-3.0"
+documentation = "https://afck.github.io/docs/fann-rs/fann"
+repository = "https://github.com/afck/fann-rs"
+readme = "README.md"
+description = """
+Wrapper for the Fast Artificial Neural Networks library
+"""
+keywords = ["neural", "network", "fann"]
+
+[dependencies]
+fann-sys = "*"
+libc = "*"
