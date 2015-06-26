@@ -43,6 +43,9 @@ pub enum FannErrorType {
     IndexOutOfBound,
     /// Scaling parameters not present
     ScaleNotPresent,
+    // Errors specific to the Rust wrapper:
+    /// Failed to save file
+    CantSaveFile,
 }
 
 impl fmt::Display for FannErrorType {
@@ -66,6 +69,7 @@ impl fmt::Display for FannErrorType {
             TrainDataSubset     => "Trying to take subset which is not within the training set",
             IndexOutOfBound     => "Index is out of bound",
             ScaleNotPresent     => "Scaling parameters not present",
+            CantSaveFile        => "Failed saving file",
         }, f)
     }
 }
@@ -94,6 +98,12 @@ impl FannError {
     /// Returns an `Err` if the previous operation on `errdat` has resulted in an error, otherwise
     /// `Ok(())`.
     pub unsafe fn check_no_error(errdat: *mut fann_error) -> Result<(), FannError> {
+        if errdat.is_null() {
+            return Err(FannError {
+                error_type: FannErrorType::CantAllocateMem,
+                error_str: "Unable to create a new object".to_string(),
+            });
+        }
         let error_type = match fann_get_errno(errdat) {
             FANN_E_NO_ERROR              => return Ok(()),
             FANN_E_CANT_OPEN_CONFIG_R    => CantOpenConfigR,

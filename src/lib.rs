@@ -172,6 +172,22 @@ impl ActivationFunc {
     }
 }
 
+/// Convert the path to a `CString`.
+fn to_filename<P: AsRef<Path>>(path: P) -> Result<CString, FannError> {
+    match path.as_ref().to_str().map(|s| CString::new(s)) {
+        None => Err(FannError {
+                    error_type: FannErrorType::CantOpenTdR,
+                    error_str: "File name contains invalid unicode characters".to_string(),
+                }),
+        Some(Err(e)) => Err(FannError {
+                            error_type: FannErrorType::CantOpenTdR,
+                            error_str: format!("File name contains a nul byte at position {}",
+                                               e.nul_position()),
+                        }),
+        Some(Ok(cs)) => Ok(cs),
+    }
+}
+
 pub struct TrainData {
     raw: *mut fann_sys::fann_train_data,
 }
@@ -192,39 +208,92 @@ impl TrainData {
     /// outputdata separated by space
     /// ```
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<TrainData, FannError> {
-        let filename = match path.as_ref().to_str().map(|s| CString::new(s)) {
-            None => return Err(FannError {
-                                   error_type: FannErrorType::CantOpenTdR,
-                                   error_str: "File name contains invalid unicode characters"
-                                                  .to_string(),
-                               }),
-            Some(Err(e)) => return Err(FannError {
-                                       error_type: FannErrorType::CantOpenTdR,
-                                       error_str: format!(
-                                           "File name contains a nul byte at position {}",
-                                           e.nul_position()),
-                               }),
-            Some(Ok(cs)) => cs,
-        };
+        let filename = try!(to_filename(path));
         unsafe {
             let raw = fann_sys::fann_read_train_from_file(filename.as_ptr());
-            if raw.is_null() {
-                return Err(FannError {
-                    error_type: FannErrorType::CantAllocateMem,
-                    error_str: "Unable to create a new TrainData object".to_string(),
-                });
-            }
             try!(FannError::check_no_error(raw as *mut fann_sys::fann_error));
             Ok(TrainData { raw: raw })
+        }
+    }
+
+    /// Save the training data to a file.
+    pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<(), FannError> {
+        let filename = try!(to_filename(path));
+        unsafe {
+            let result = fann_sys::fann_save_train(self.raw, filename.as_ptr());
+            try!(FannError::check_no_error(self.raw as *mut fann_sys::fann_error));
+            if result == -1 {
+                Err(FannError {
+                    error_type: FannErrorType::CantSaveFile,
+                    error_str: "Error saving training data".to_string(),
+                })
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    /// Merge the given data sets into a new one.
+    pub fn merge(data1: &TrainData, data2: &TrainData) -> Result<TrainData, FannError> {
+        unsafe {
+            let raw = fann_sys::fann_merge_train_data(data1.raw, data2.raw);
+            try!(FannError::check_no_error(raw as *mut fann_sys::fann_error));
+            Ok(TrainData { raw: raw })
+        }
+    }
+
+    /// Create a subset of the training data, starting at the given positon and consisting of
+    /// `length` samples.
+    pub fn subset(&self, pos: c_uint, length: c_uint) -> Result<TrainData, FannError> {
+        unsafe {
+            let raw = fann_sys::fann_subset_train_data(self.raw, pos, length);
+            try!(FannError::check_no_error(raw as *mut fann_sys::fann_error));
+            Ok(TrainData { raw: raw })
+        }
+    }
+
+    /// Return the number of training patterns in the data.
+    pub fn length(&self) -> c_uint {
+        unsafe { fann_sys::fann_length_train_data(self.raw) }
+    }
+
+    /// Return the number of input values in each training pattern.
+    pub fn num_input(&self) -> c_uint {
+        unsafe { fann_sys::fann_num_input_train_data(self.raw) }
+    }
+
+    /// Return the number of output values in each training pattern.
+    pub fn num_output(&self) -> c_uint {
+        unsafe { fann_sys::fann_num_output_train_data(self.raw) }
+    }
+
+    // TODO: from_callback
+    // TODO: `scale` methods
+    // TODO: save_to_fixed?
+
+    /// Shuffle training data, randomizing the order. This is recommended for incremental training
+    /// while it does not affect batch training.
+    pub fn shuffle(&mut self) {
+        unsafe { fann_sys::fann_shuffle_train_data(self.raw); }
+    }
+}
+
+impl Clone for TrainData {
+    fn clone(&self) -> TrainData {
+        unsafe {
+            let raw = fann_sys::fann_duplicate_train_data(self.raw);
+            // TODO: Incorporate null check into check_no_error?
+            if FannError::check_no_error(raw as *mut fann_sys::fann_error).is_err() {
+                panic!("Unable to clone TrainData.");
+            }
+            TrainData { raw: raw }
         }
     }
 }
 
 impl Drop for TrainData {
     fn drop(&mut self) {
-        unsafe {
-            fann_sys::fann_destroy_train(self.raw);
-        }
+        unsafe { fann_sys::fann_destroy_train(self.raw); }
     }
 }
 
@@ -278,12 +347,6 @@ impl Fann {
             let raw = fann_sys::fann_create_sparse_array(connection_rate,
                                                          layers.len() as c_uint,
                                                          layers.as_ptr());
-            if raw.is_null() {
-                return Err(FannError {
-                    error_type: FannErrorType::CantAllocateMem,
-                    error_str: "Unable to create a new Fann object".to_string(),
-                });
-            }
             try!(FannError::check_no_error(raw as *mut fann_sys::fann_error));
             Ok(Fann { raw: raw })
         }
@@ -319,6 +382,8 @@ impl Fann {
         }
     }
 
+    /// Train with a single pair of input and output. This is always incremental training (see
+    /// `TrainAlg`), since only one pattern is presented.
     pub fn train(&mut self, input: &[fann_type], desired_output: &[fann_type])
             -> Result<(), FannError> {
         unsafe {
@@ -332,7 +397,7 @@ impl Fann {
 
     /// Train the network on the given data set.
     ///
-    /// # Parameters
+    /// # Arguments
     ///
     /// * `data`                   - The training data.
     /// * `max_epochs`             - The maximum number of training epochs.
@@ -363,6 +428,65 @@ impl Fann {
                                          desired_error: c_float) -> Result<(), FannError> {
         let train = try!(TrainData::from_file(path));
         self.train_on_data(&train, max_epochs, epochs_between_reports, desired_error)
+    }
+
+    /// Train one epoch with a set of training data, i. e. each sample from the training data is
+    /// considered exactly once.
+    ///
+    /// Returns the mean square error as it is calculated either before or during the actual
+    /// training. This is not the actual MSE after the training epoch, but since calculating this
+    /// will require to go through the entire training set once more, it is more than adequate to
+    /// use this value during training.
+    pub fn train_epoch(&mut self, data: &TrainData) -> Result<c_float, FannError> {
+        unsafe {
+            let mse = fann_sys::fann_train_epoch(self.raw, data.raw);
+            try!(FannError::check_no_error(self.raw as *mut fann_sys::fann_error));
+            Ok(mse)
+        }
+    }
+
+    /// Test with a single pair of input and output. This operation updates the mean square error
+    /// but does not change the network.
+    ///
+    /// Returns the actual output of the network.
+    pub fn test(&mut self, input: &[fann_type], desired_output: &[fann_type])
+            -> Result<Vec<fann_type>, FannError> {
+        try!(self.check_input_size(input));
+        try!(self.check_output_size(desired_output));
+        let num_output = self.get_num_output() as usize;
+        let mut result = Vec::with_capacity(num_output);
+        unsafe {
+            let output = fann_sys::fann_test(self.raw, input.as_ptr(), desired_output.as_ptr());
+            try!(FannError::check_no_error(self.raw as *mut fann_sys::fann_error));
+            copy_nonoverlapping(output, result.as_mut_ptr(), num_output);
+            result.set_len(num_output);
+        }
+        Ok(result)
+    }
+
+    /// Test with a training data set and calculate the mean square error.
+    pub fn test_data(&mut self, data: &TrainData) -> Result<c_float, FannError> {
+        unsafe {
+            let mse = fann_sys::fann_test_data(self.raw, data.raw);
+            try!(FannError::check_no_error(self.raw as *mut fann_sys::fann_error));
+            Ok(mse)
+        }
+    }
+
+    /// Get the mean square error.
+    pub fn get_mse(&self) -> c_float {
+        unsafe { fann_sys::fann_get_MSE(self.raw) }
+    }
+
+    /// Get the number of fail bits, i. e. the number of neurons which differed from the desired
+    /// output by more than the bit fail limit since the previous reset.
+    pub fn get_bit_fail(&self) -> c_uint {
+        unsafe { fann_sys::fann_get_bit_fail(self.raw) }
+    }
+
+    /// Reset the mean square error and bit fail count.
+    pub fn reset_mse(&mut self) {
+        unsafe { fann_sys::fann_reset_MSE(self.raw); }
     }
 
     /// Run the input through the neural network and returns the output. The length of the input
@@ -410,9 +534,7 @@ impl Fann {
 
 impl Drop for Fann {
     fn drop(&mut self) {
-        unsafe {
-            fann_sys::fann_destroy(self.raw);
-        }
+        unsafe { fann_sys::fann_destroy(self.raw); }
     }
 }
 
