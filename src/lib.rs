@@ -1,7 +1,7 @@
 extern crate libc;
 extern crate fann_sys;
 
-use error::{FannError, FannErrorType};
+use error::{FannError, FannErrorType, FannResult};
 use fann_sys::fann_activationfunc_enum::*;
 use fann_sys::fann_errorfunc_enum::*;
 use fann_sys::fann_nettype_enum::*;
@@ -20,7 +20,7 @@ pub mod train_data;
 /// `fann_train_on_data` or `fann_train_on_file`. The incremental training alters the weights
 /// after each time it is presented an input pattern, while batch only alters the weights once after
 /// it has been presented to all the patterns.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Eq, PartialEq)]
 pub enum TrainAlgorithm {
     /// Standard backpropagation algorithm, where the weights are updated after each training
     /// pattern. This means that the weights are updated many times during a single epoch and some
@@ -83,7 +83,7 @@ impl TrainAlgorithm {
 /// * s is the steepness and
 ///
 /// * d is the derivation.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum ActivationFunc {
     /// Linear activation function.
     ///
@@ -221,27 +221,30 @@ pub enum ActivationFunc {
 
 impl ActivationFunc {
     fn from_fann_activationfunc_enum(af_enum: fann_sys::fann_activationfunc_enum)
-            -> Option<ActivationFunc> {
+            -> FannResult<ActivationFunc> {
         match af_enum {
-            // TODO: FANN_NONE                       => None,
-            FANN_LINEAR                     => Some(ActivationFunc::Linear),
-            FANN_THRESHOLD                  => Some(ActivationFunc::Threshold),
-            FANN_THRESHOLD_SYMMETRIC        => Some(ActivationFunc::ThresholdSymmetric),
-            FANN_SIGMOID                    => Some(ActivationFunc::Sigmoid),
-            FANN_SIGMOID_STEPWISE           => Some(ActivationFunc::SigmoidStepwise),
-            FANN_SIGMOID_SYMMETRIC          => Some(ActivationFunc::SigmoidSymmetric),
-            FANN_SIGMOID_SYMMETRIC_STEPWISE => Some(ActivationFunc::SigmoidSymmetricStepwise),
-            FANN_GAUSSIAN                   => Some(ActivationFunc::Gaussian),
-            FANN_GAUSSIAN_SYMMETRIC         => Some(ActivationFunc::GaussianSymmetric),
-            FANN_GAUSSIAN_STEPWISE          => Some(ActivationFunc::GaussianStepwise),
-            FANN_ELLIOTT                    => Some(ActivationFunc::Elliott),
-            FANN_ELLIOTT_SYMMETRIC          => Some(ActivationFunc::ElliottSymmetric),
-            FANN_LINEAR_PIECE               => Some(ActivationFunc::LinearPiece),
-            FANN_LINEAR_PIECE_SYMMETRIC     => Some(ActivationFunc::LinearPieceSymmetric),
-            FANN_SIN_SYMMETRIC              => Some(ActivationFunc::SinSymmetric),
-            FANN_COS_SYMMETRIC              => Some(ActivationFunc::CosSymmetric),
-            FANN_SIN                        => Some(ActivationFunc::Sin),
-            FANN_COS                        => Some(ActivationFunc::Cos),
+            FANN_NONE => Err(FannError {
+                             error_type: FannErrorType::IndexOutOfBound,
+                             error_str: "Neuron or layer index is out of bound.".to_string(),
+                         }),
+            FANN_LINEAR                     => Ok(ActivationFunc::Linear),
+            FANN_THRESHOLD                  => Ok(ActivationFunc::Threshold),
+            FANN_THRESHOLD_SYMMETRIC        => Ok(ActivationFunc::ThresholdSymmetric),
+            FANN_SIGMOID                    => Ok(ActivationFunc::Sigmoid),
+            FANN_SIGMOID_STEPWISE           => Ok(ActivationFunc::SigmoidStepwise),
+            FANN_SIGMOID_SYMMETRIC          => Ok(ActivationFunc::SigmoidSymmetric),
+            FANN_SIGMOID_SYMMETRIC_STEPWISE => Ok(ActivationFunc::SigmoidSymmetricStepwise),
+            FANN_GAUSSIAN                   => Ok(ActivationFunc::Gaussian),
+            FANN_GAUSSIAN_SYMMETRIC         => Ok(ActivationFunc::GaussianSymmetric),
+            FANN_GAUSSIAN_STEPWISE          => Ok(ActivationFunc::GaussianStepwise),
+            FANN_ELLIOTT                    => Ok(ActivationFunc::Elliott),
+            FANN_ELLIOTT_SYMMETRIC          => Ok(ActivationFunc::ElliottSymmetric),
+            FANN_LINEAR_PIECE               => Ok(ActivationFunc::LinearPiece),
+            FANN_LINEAR_PIECE_SYMMETRIC     => Ok(ActivationFunc::LinearPieceSymmetric),
+            FANN_SIN_SYMMETRIC              => Ok(ActivationFunc::SinSymmetric),
+            FANN_COS_SYMMETRIC              => Ok(ActivationFunc::CosSymmetric),
+            FANN_SIN                        => Ok(ActivationFunc::Sin),
+            FANN_COS                        => Ok(ActivationFunc::Cos),
         }
     }
 
@@ -270,7 +273,7 @@ impl ActivationFunc {
 }
 
 /// Error function used during training.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Eq, PartialEq)]
 pub enum ErrorFunc {
     /// Standard linear error function
     Linear,
@@ -297,7 +300,7 @@ impl ErrorFunc {
 }
 
 /// Stop critieria for training.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Eq, PartialEq)]
 pub enum StopFunc {
     /// The mean square error of the whole output.
     Mse,
@@ -323,7 +326,7 @@ impl StopFunc {
 }
 
 /// Network types
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum NetType {
     /// Each layer of neurons only has connections to the next layer.
     Layer,
@@ -369,7 +372,7 @@ impl Fann {
     /// let layers = [2, 8, 9, 1];
     /// fann::Fann::new(&layers).unwrap();
     /// ```
-    pub fn new(layers: &[c_uint]) -> Result<Fann, FannError> {
+    pub fn new(layers: &[c_uint]) -> FannResult<Fann> {
         Fann::new_sparse(1.0, layers)
     }
 
@@ -385,7 +388,7 @@ impl Fann {
     ///                       connected.
     /// * `layers`          - Specifies the number of neurons in each layer, starting with the input
     ///                       and ending with the output layer.
-    pub fn new_sparse(connection_rate: c_float, layers: &[c_uint]) -> Result<Fann, FannError> {
+    pub fn new_sparse(connection_rate: c_float, layers: &[c_uint]) -> FannResult<Fann> {
         unsafe {
             let raw = fann_sys::fann_create_sparse_array(connection_rate,
                                                          layers.len() as c_uint,
@@ -398,7 +401,7 @@ impl Fann {
     /// Create a neural network which has shortcut connections, i. e. it doesn't connect only each
     /// layer to its successor, but every layer with every later layer: Each neuron has connections
     /// to all neurons in all subsequent layers.
-    pub fn new_shortcut(layers: &[c_uint]) -> Result<Fann, FannError> {
+    pub fn new_shortcut(layers: &[c_uint]) -> FannResult<Fann> {
         unsafe {
             let raw = fann_sys::fann_create_shortcut_array(layers.len() as c_uint, layers.as_ptr());
             try!(FannError::check_no_error(raw as *mut fann_sys::fann_error));
@@ -414,7 +417,7 @@ impl Fann {
 
     /// Return an `Err` if the size of the slice does not match the number of input neurons,
     /// otherwise `Ok(())`.
-    fn check_input_size(&self, input: &[fann_type]) -> Result<(), FannError> {
+    fn check_input_size(&self, input: &[fann_type]) -> FannResult<()> {
         let num_input = self.get_num_input() as usize;
         if input.len() == num_input {
             Ok(())
@@ -429,7 +432,7 @@ impl Fann {
 
     /// Return an `Err` if the size of the slice does not match the number of output neurons,
     /// otherwise `Ok(())`.
-    fn check_output_size(&self, output: &[fann_type]) -> Result<(), FannError> {
+    fn check_output_size(&self, output: &[fann_type]) -> FannResult<()> {
         let num_output = self.get_num_output() as usize;
         if output.len() == num_output {
             Ok(())
@@ -444,8 +447,7 @@ impl Fann {
 
     /// Train with a single pair of input and output. This is always incremental training (see
     /// `TrainAlg`), since only one pattern is presented.
-    pub fn train(&mut self, input: &[fann_type], desired_output: &[fann_type])
-            -> Result<(), FannError> {
+    pub fn train(&mut self, input: &[fann_type], desired_output: &[fann_type]) -> FannResult<()> {
         unsafe {
             try!(self.check_input_size(input));
             try!(self.check_output_size(desired_output));
@@ -469,7 +471,7 @@ impl Fann {
                          data: &TrainData,
                          max_epochs: c_uint,
                          epochs_between_reports: c_uint,
-                         desired_error: c_float) -> Result<(), FannError> {
+                         desired_error: c_float) -> FannResult<()> {
         unsafe {
             fann_sys::fann_train_on_data(self.raw,
                                          data.get_raw(),
@@ -485,7 +487,7 @@ impl Fann {
                                          path: P,
                                          max_epochs: c_uint,
                                          epochs_between_reports: c_uint,
-                                         desired_error: c_float) -> Result<(), FannError> {
+                                         desired_error: c_float) -> FannResult<()> {
         let train = try!(TrainData::from_file(path));
         self.train_on_data(&train, max_epochs, epochs_between_reports, desired_error)
     }
@@ -497,7 +499,7 @@ impl Fann {
     /// training. This is not the actual MSE after the training epoch, but since calculating this
     /// will require to go through the entire training set once more, it is more than adequate to
     /// use this value during training.
-    pub fn train_epoch(&mut self, data: &TrainData) -> Result<c_float, FannError> {
+    pub fn train_epoch(&mut self, data: &TrainData) -> FannResult<c_float> {
         unsafe {
             let mse = fann_sys::fann_train_epoch(self.raw, data.get_raw());
             try!(FannError::check_no_error(self.raw as *mut fann_sys::fann_error));
@@ -510,7 +512,7 @@ impl Fann {
     ///
     /// Returns the actual output of the network.
     pub fn test(&mut self, input: &[fann_type], desired_output: &[fann_type])
-            -> Result<Vec<fann_type>, FannError> {
+            -> FannResult<Vec<fann_type>> {
         try!(self.check_input_size(input));
         try!(self.check_output_size(desired_output));
         let num_output = self.get_num_output() as usize;
@@ -525,7 +527,7 @@ impl Fann {
     }
 
     /// Test with a training data set and calculate the mean square error.
-    pub fn test_data(&mut self, data: &TrainData) -> Result<c_float, FannError> {
+    pub fn test_data(&mut self, data: &TrainData) -> FannResult<c_float> {
         unsafe {
             let mse = fann_sys::fann_test_data(self.raw, data.get_raw());
             try!(FannError::check_no_error(self.raw as *mut fann_sys::fann_error));
@@ -552,7 +554,7 @@ impl Fann {
     /// Run the input through the neural network and returns the output. The length of the input
     /// must equal the number of input neurons and the length of the output will equal the number
     /// of output neurons.
-    pub fn run(&self, input: &[fann_type]) -> Result<Vec<fann_type>, FannError> {
+    pub fn run(&self, input: &[fann_type]) -> FannResult<Vec<fann_type>> {
         try!(self.check_input_size(input));
         let num_output = self.get_num_output() as usize;
         let mut result = Vec::with_capacity(num_output);
@@ -612,8 +614,9 @@ impl Fann {
     /// Get the activation function for neuron number `neuron` in layer number `layer`, counting
     /// the input layer as number 0. Input layer neurons do not have an activation function, so
     /// `layer` must be at least 1.
-    pub fn get_activation_func(&self, layer: c_int, neuron: c_int) -> Option<ActivationFunc> {
+    pub fn get_activation_func(&self, layer: c_int, neuron: c_int) -> FannResult<ActivationFunc> {
         let af_enum = unsafe { fann_sys::fann_get_activation_function(self.raw, layer, neuron) };
+        unsafe { try!(FannError::check_no_error(self.raw as *mut fann_sys::fann_error)) };
         ActivationFunc::from_fann_activationfunc_enum(af_enum)
     }
 
@@ -790,5 +793,15 @@ mod tests {
         assert!(EPSILON > ( 1.0 - fann.run(&[ 1.0, -1.0]).unwrap()[0]).abs());
         assert!(EPSILON > (-1.0 - fann.run(&[ 1.0,  1.0]).unwrap()[0]).abs());
         assert!(EPSILON > (-1.0 - fann.run(&[-1.0, -1.0]).unwrap()[0]).abs());
+    }
+
+    #[test]
+    fn test_activation_func() {
+        let mut fann = Fann::new(&[4, 3, 3, 1]).unwrap();
+        assert!(fann.get_activation_func(0, 1).is_err());
+        assert!(fann.get_activation_func(4, 1).is_err());
+        assert_eq!(Ok(ActivationFunc::SigmoidStepwise), fann.get_activation_func(2, 2));
+        fann.set_activation_func(ActivationFunc::Sin, 2, 2);
+        assert_eq!(Ok(ActivationFunc::Sin), fann.get_activation_func(2, 2));
     }
 }

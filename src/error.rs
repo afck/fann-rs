@@ -5,7 +5,7 @@ use std::error::Error;
 use std::fmt;
 use std::ffi::CStr;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum FannErrorType {
     /// Unable to open configuration file for reading
     CantOpenConfigR,
@@ -74,11 +74,13 @@ impl fmt::Display for FannErrorType {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FannError {
     pub error_type: FannErrorType,
     pub error_str: String,
 }
+
+pub type FannResult<T> = Result<T, FannError>;
 
 impl fmt::Display for FannError {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
