@@ -101,7 +101,7 @@ impl TrainData {
     }
 
     // TODO: from_callback
-    // TODO: `scale` methods
+    // TODO: scale methods
     // TODO: save_to_fixed?
 
     /// Shuffle training data, randomizing the order. This is recommended for incremental training
@@ -120,7 +120,6 @@ impl Clone for TrainData {
     fn clone(&self) -> TrainData {
         unsafe {
             let raw = fann_sys::fann_duplicate_train_data(self.raw);
-            // TODO: Incorporate null check into check_no_error?
             if FannError::check_no_error(raw as *mut fann_sys::fann_error).is_err() {
                 panic!("Unable to clone TrainData.");
             }
