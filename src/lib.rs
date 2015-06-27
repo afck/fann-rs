@@ -489,8 +489,40 @@ impl Fann {
         unsafe { fann_sys::fann_init_weights(self.raw, train_data.get_raw()) }
     }
 
-    // TODO: save_to_fixed
-    // TODO: print methods
+    /// Print the connections of the network in a compact matrix, for easy viewing of its
+    /// internals.
+    ///
+    /// The output on a small (2 2 1) network trained on the xor problem:
+    ///
+    /// ```text
+    /// Layer / Neuron 012345
+    /// L   1 / N    3 BBa...
+    /// L   1 / N    4 BBA...
+    /// L   1 / N    5 ......
+    /// L   2 / N    6 ...BBA
+    /// L   2 / N    7 ......
+    /// ```
+    ///
+    /// This network has five real neurons and two bias neurons. This gives a total of seven
+    /// neurons named from 0 to 6. The connections between these neurons can be seen in the matrix.
+    /// "." is a place where there is no connection, while a character tells how strong the
+    /// connection is on a scale from a-z. The two real neurons in the hidden layer (neuron 3 and 4
+    /// in layer 1) have connections from the three neurons in the previous layer as is visible in
+    /// the first two lines. The output neuron 6 has connections from the three neurons in the
+    /// hidden layer 3 - 5 as is visible in the fourth line.
+    ///
+    /// To simplify the matrix output neurons are not visible as neurons that connections can come
+    /// from, and input and bias neurons are not visible as neurons that connections can go to.
+    pub fn print_connections(&self) {
+        unsafe { fann_sys::fann_print_connections(self.raw) }
+    }
+
+    /// Print all parameters and options of the network.
+    pub fn print_parameters(&self) {
+        unsafe { fann_sys::fann_print_parameters(self.raw) }
+    }
+
+    // TODO: save_to_fixed?
 
     /// Return an `Err` if the size of the slice does not match the number of input neurons,
     /// otherwise `Ok(())`.
