@@ -3,14 +3,82 @@ extern crate fann_sys;
 
 use error::{FannError, FannErrorType};
 use fann_sys::fann_activationfunc_enum::*;
+use fann_sys::fann_train_enum::*;
 use fann_sys::fann_type;
-use libc::{c_float, c_uint};
+use libc::{c_float, c_int, c_uint};
 use std::ffi::CString;
 use std::path::Path;
 use std::ptr::copy_nonoverlapping;
 
 pub mod error;
 
+/// The Training algorithms used when training on `fann_train_data` with functions like
+/// `fann_train_on_data` or `fann_train_on_file`. The incremental training alters the weights
+/// after each time it is presented an input pattern, while batch only alters the weights once after
+/// it has been presented to all the patterns.
+#[derive(Copy, Clone)]
+pub enum TrainAlgorithm {
+    /// Standard backpropagation algorithm, where the weights are updated after each training
+    /// pattern. This means that the weights are updated many times during a single epoch and some
+    /// problems will train very fast, while other more advanced problems will not train very well.
+    Incremental,
+    /// Standard backpropagation algorithm, where the weights are updated after calculating the mean
+    /// square error for the whole training set. This means that the weights are only updated once
+    /// during an epoch. For this reason some problems will train slower with this algorithm. But
+    /// since the mean square error is calculated more correctly than in incremental training, some
+    /// problems will reach better solutions.
+    Batch,
+    /// A more advanced batch training algorithm which achieves good results for many problems.
+    /// `Rprop` is adaptive and therefore does not use the `learning_rate`. Some other parameters
+    /// can, however, be set to change the way `Rprop` works, but it is only recommended for users
+    /// with a deep understanding of the algorithm. The original RPROP training algorithm is
+    /// described by [Riedmiller and Braun, 1993], but the algorithm used here is a variant, iRPROP,
+    /// described by [Igel and Husken, 2000].
+    Rprop,
+    /// A more advanced batch training algorithm which achieves good results for many problems. The
+    /// quickprop training algorithm uses the `learning_rate` parameter along with other more
+    /// advanced parameters, but it is only recommended to change these for users with a deep
+    /// understanding of the algorithm. Quickprop is described by [Fahlman, 1988].
+    Quickprop,
+}
+
+impl TrainAlgorithm {
+    fn from_fann_train_enum(fte: fann_sys::fann_train_enum) -> TrainAlgorithm {
+        match fte {
+            FANN_TRAIN_INCREMENTAL => TrainAlgorithm::Incremental,
+            FANN_TRAIN_BATCH       => TrainAlgorithm::Batch,
+            FANN_TRAIN_RPROP       => TrainAlgorithm::Rprop,
+            FANN_TRAIN_QUICKPROP   => TrainAlgorithm::Quickprop,
+        }
+    }
+
+    fn to_fann_train_enum(&self) -> fann_sys::fann_train_enum {
+        match *self {
+            TrainAlgorithm::Incremental => FANN_TRAIN_INCREMENTAL,
+            TrainAlgorithm::Batch       => FANN_TRAIN_BATCH,
+            TrainAlgorithm::Rprop       => FANN_TRAIN_RPROP,
+            TrainAlgorithm::Quickprop   => FANN_TRAIN_QUICKPROP,
+        }
+    }
+}
+
+/// The activation functions used for the neurons during training. They can either be set for a
+/// group of neurons using `set_activation_func_hidden` and `set_activation_func_output`, or for a
+/// single neuron using `set_activation_func`.
+///
+/// Similarly, the steepness of an activation function is specified using
+/// `set_activation_steepness_hidden`, `set_activation_steepness_output` and
+/// `set_activation_steepness`.
+///
+/// In the descriptions of the functions:
+///
+/// * x is the input to the activation function,
+///
+/// * y is the output,
+///
+/// * s is the steepness and
+///
+/// * d is the derivation.
 #[derive(Copy, Clone)]
 pub enum ActivationFunc {
     /// Linear activation function.
@@ -148,6 +216,31 @@ pub enum ActivationFunc {
 }
 
 impl ActivationFunc {
+    fn from_fann_activationfunc_enum(af_enum: fann_sys::fann_activationfunc_enum)
+            -> Option<ActivationFunc> {
+        match af_enum {
+            // TODO: FANN_NONE                       => None,
+            FANN_LINEAR                     => Some(ActivationFunc::Linear),
+            FANN_THRESHOLD                  => Some(ActivationFunc::Threshold),
+            FANN_THRESHOLD_SYMMETRIC        => Some(ActivationFunc::ThresholdSymmetric),
+            FANN_SIGMOID                    => Some(ActivationFunc::Sigmoid),
+            FANN_SIGMOID_STEPWISE           => Some(ActivationFunc::SigmoidStepwise),
+            FANN_SIGMOID_SYMMETRIC          => Some(ActivationFunc::SigmoidSymmetric),
+            FANN_SIGMOID_SYMMETRIC_STEPWISE => Some(ActivationFunc::SigmoidSymmetricStepwise),
+            FANN_GAUSSIAN                   => Some(ActivationFunc::Gaussian),
+            FANN_GAUSSIAN_SYMMETRIC         => Some(ActivationFunc::GaussianSymmetric),
+            FANN_GAUSSIAN_STEPWISE          => Some(ActivationFunc::GaussianStepwise),
+            FANN_ELLIOTT                    => Some(ActivationFunc::Elliott),
+            FANN_ELLIOTT_SYMMETRIC          => Some(ActivationFunc::ElliottSymmetric),
+            FANN_LINEAR_PIECE               => Some(ActivationFunc::LinearPiece),
+            FANN_LINEAR_PIECE_SYMMETRIC     => Some(ActivationFunc::LinearPieceSymmetric),
+            FANN_SIN_SYMMETRIC              => Some(ActivationFunc::SinSymmetric),
+            FANN_COS_SYMMETRIC              => Some(ActivationFunc::CosSymmetric),
+            FANN_SIN                        => Some(ActivationFunc::Sin),
+            FANN_COS                        => Some(ActivationFunc::Cos),
+        }
+    }
+
     fn to_fann_activationfunc_enum(&self) -> fann_sys::fann_activationfunc_enum {
         match *self {
             ActivationFunc::Linear                   => FANN_LINEAR,
@@ -527,8 +620,60 @@ impl Fann {
     pub fn set_activation_func_output(&mut self, activation_func: ActivationFunc) {
         unsafe {
             let af_enum = activation_func.to_fann_activationfunc_enum();
-            fann_sys::fann_set_activation_function_output(self.raw, af_enum);
+            fann_sys::fann_set_activation_function_output(self.raw, af_enum)
         }
+    }
+
+    /// Get the activation function for neuron number `neuron` in layer number `layer`, counting
+    /// the input layer as number 0. Input layer neurons do not have an activation function, so
+    /// `layer` must be at least 1.
+    pub fn get_activation_func(&self, layer: c_int, neuron: c_int) -> Option<ActivationFunc> {
+        let af_enum = unsafe { fann_sys::fann_get_activation_function(self.raw, layer, neuron) };
+        ActivationFunc::from_fann_activationfunc_enum(af_enum)
+    }
+
+    /// Set the activation function for neuron number `neuron` in layer number `layer`, counting
+    /// the input layer as number 0. Input layer neurons do not have an activation function, so
+    /// `layer` must be at least 1.
+    pub fn set_activation_func(&self, af: ActivationFunc, layer: c_int, neuron: c_int) {
+        let af_enum = af.to_fann_activationfunc_enum();
+        unsafe { fann_sys::fann_set_activation_function(self.raw, af_enum, layer, neuron) }
+    }
+
+    /// Get the currently configured training algorithm.
+    pub fn get_train_algorithm(&self) -> TrainAlgorithm {
+        let ft_enum = unsafe { fann_sys::fann_get_training_algorithm(self.raw) };
+        TrainAlgorithm::from_fann_train_enum(ft_enum)
+    }
+
+    /// Set the algorithm to be used for training.
+    pub fn set_train_algorithm(&self, ta: TrainAlgorithm) {
+        let ft_enum = ta.to_fann_train_enum();
+        unsafe { fann_sys::fann_set_training_algorithm(self.raw, ft_enum) }
+    }
+
+    /// Get the learning rate, which is used to determine how aggressive training should be (not
+    /// used by the RPROP algorithm). The default is 0.7.
+    pub fn get_learning_rate(&self) -> c_float {
+        unsafe { fann_sys::fann_get_learning_rate(self.raw) }
+    }
+
+    /// Set the learning rate, which is used to determine how aggressive training should be (not
+    /// used by the RPROP algorithm). The default is 0.7.
+    pub fn set_learning_rate(&self, learning_rate: c_float) {
+        unsafe { fann_sys::fann_set_learning_rate(self.raw, learning_rate) }
+    }
+
+    /// Get the learning momentum used in incremental training. It is recommended to use a value
+    /// between 0.0 and 1.0. The default is 1.0.
+    pub fn get_learning_momentum(&self) -> c_float {
+        unsafe { fann_sys::fann_get_learning_momentum(self.raw) }
+    }
+
+    /// Set the learning momentum used in incremental training. It is recommended to use a value
+    /// between 0.0 and 1.0. The default is 1.0.
+    pub fn set_learning_momentum(&self, learning_momentum: c_float) {
+        unsafe { fann_sys::fann_set_learning_momentum(self.raw, learning_momentum) }
     }
 }
 
