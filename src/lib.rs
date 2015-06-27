@@ -38,7 +38,7 @@ fn to_filename<P: AsRef<Path>>(path: P) -> Result<CString, FannError> {
 /// `fann_train_on_data` or `fann_train_on_file`. The incremental training alters the weights
 /// after each time it is presented an input pattern, while batch only alters the weights once after
 /// it has been presented to all the patterns.
-#[derive(Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum TrainAlgorithm {
     /// Standard backpropagation algorithm, where the weights are updated after each training
     /// pattern. This means that the weights are updated many times during a single epoch and some
@@ -56,30 +56,48 @@ pub enum TrainAlgorithm {
     /// with a deep understanding of the algorithm. The original RPROP training algorithm is
     /// described by [Riedmiller and Braun, 1993], but the algorithm used here is a variant, iRPROP,
     /// described by [Igel and Husken, 2000].
-    Rprop,
+    Rprop {
+        /// A value less than 1, used to decrease the step size during training. Default 0.5
+        decrease_factor: c_float,
+        /// A value greater than 1, used to increase the step size during training. Default 1.2
+        increase_factor: c_float,
+        /// The minimum step size. Default 0.0
+        delta_min: c_float,
+        /// The maximum step size. Default 50.0
+        delta_max: c_float,
+        /// The initial step size. Default 0.1
+        delta_zero: c_float,
+    },
     /// A more advanced batch training algorithm which achieves good results for many problems. The
     /// quickprop training algorithm uses the `learning_rate` parameter along with other more
     /// advanced parameters, but it is only recommended to change these for users with a deep
     /// understanding of the algorithm. Quickprop is described by [Fahlman, 1988].
-    Quickprop,
+    Quickprop {
+        /// The factor by which weights should become smaller in each iteration, to ensure that
+        /// the weights don't grow too large during training. Should be a negative number close to
+        /// 0. The default is -0.0001.
+        decay: c_float,
+        /// The mu factor is used to increase or decrease the step size; should always be greater
+        /// than 1. The default is 1.75.
+        mu: c_float,
+    },
 }
 
 impl TrainAlgorithm {
-    fn from_fann_train_enum(fte: fann_sys::fann_train_enum) -> TrainAlgorithm {
-        match fte {
-            FANN_TRAIN_INCREMENTAL => TrainAlgorithm::Incremental,
-            FANN_TRAIN_BATCH       => TrainAlgorithm::Batch,
-            FANN_TRAIN_RPROP       => TrainAlgorithm::Rprop,
-            FANN_TRAIN_QUICKPROP   => TrainAlgorithm::Quickprop,
+    pub fn default_rprop() -> TrainAlgorithm {
+        TrainAlgorithm::Rprop {
+            decrease_factor: 0.5,
+            increase_factor: 1.2,
+            delta_min: 0.0,
+            delta_max: 50.0,
+            delta_zero: 0.1,
         }
     }
-
-    fn to_fann_train_enum(&self) -> fann_sys::fann_train_enum {
-        match *self {
-            TrainAlgorithm::Incremental => FANN_TRAIN_INCREMENTAL,
-            TrainAlgorithm::Batch       => FANN_TRAIN_BATCH,
-            TrainAlgorithm::Rprop       => FANN_TRAIN_RPROP,
-            TrainAlgorithm::Quickprop   => FANN_TRAIN_QUICKPROP,
+    
+    pub fn default_quickprop() -> TrainAlgorithm {
+        TrainAlgorithm::Quickprop {
+            decay: -0.0001,
+            mu: 1.75,
         }
     }
 }
@@ -789,20 +807,57 @@ impl Fann {
         unsafe { fann_sys::fann_set_bit_fail_limit(self.raw, bit_fail_limit) }
     }
 
-    // TODO: quickprop methods
-    // TODO: rprop methods
     // TODO: cascadetrain methods
 
     /// Get the currently configured training algorithm.
     pub fn get_train_algorithm(&self) -> TrainAlgorithm {
         let ft_enum = unsafe { fann_sys::fann_get_training_algorithm(self.raw) };
-        TrainAlgorithm::from_fann_train_enum(ft_enum)
+        match ft_enum {
+            FANN_TRAIN_INCREMENTAL => TrainAlgorithm::Incremental,
+            FANN_TRAIN_BATCH       => TrainAlgorithm::Batch,
+            FANN_TRAIN_RPROP       => unsafe {
+                TrainAlgorithm::Rprop {
+                    decrease_factor: fann_sys::fann_get_rprop_decrease_factor(self.raw),
+                    increase_factor: fann_sys::fann_get_rprop_increase_factor(self.raw),
+                    delta_min: fann_sys::fann_get_rprop_delta_min(self.raw),
+                    delta_max: fann_sys::fann_get_rprop_delta_max(self.raw),
+                    delta_zero: fann_sys::fann_get_rprop_delta_zero(self.raw),
+                }
+            },
+            FANN_TRAIN_QUICKPROP   => unsafe {
+                TrainAlgorithm::Quickprop {
+                    decay: fann_sys::fann_get_quickprop_decay(self.raw),
+                    mu: fann_sys::fann_get_quickprop_mu(self.raw),
+                }
+            },
+        }
     }
 
     /// Set the algorithm to be used for training.
     pub fn set_train_algorithm(&mut self, ta: TrainAlgorithm) {
-        let ft_enum = ta.to_fann_train_enum();
-        unsafe { fann_sys::fann_set_training_algorithm(self.raw, ft_enum) }
+        match ta {
+            TrainAlgorithm::Incremental => unsafe {
+                fann_sys::fann_set_training_algorithm(self.raw, FANN_TRAIN_INCREMENTAL);
+            },
+            TrainAlgorithm::Batch => unsafe {
+                fann_sys::fann_set_training_algorithm(self.raw, FANN_TRAIN_BATCH);
+            },
+            TrainAlgorithm::Rprop {
+                decrease_factor, increase_factor, delta_min, delta_max, delta_zero
+            } => unsafe {
+                fann_sys::fann_set_training_algorithm(self.raw, FANN_TRAIN_RPROP);
+                fann_sys::fann_set_rprop_decrease_factor(self.raw, decrease_factor);
+                fann_sys::fann_set_rprop_increase_factor(self.raw, increase_factor);
+                fann_sys::fann_set_rprop_delta_min(self.raw, delta_min);
+                fann_sys::fann_set_rprop_delta_max(self.raw, delta_max);
+                fann_sys::fann_set_rprop_delta_zero(self.raw, delta_zero);
+            },
+            TrainAlgorithm::Quickprop { decay, mu } => unsafe {
+                fann_sys::fann_set_training_algorithm(self.raw, FANN_TRAIN_QUICKPROP);
+                fann_sys::fann_set_quickprop_decay(self.raw, decay);
+                fann_sys::fann_set_quickprop_mu(self.raw, mu);
+            },
+        }
     }
 
     /// Get the learning rate, which is used to determine how aggressive training should be (not
@@ -868,5 +923,17 @@ mod tests {
         assert_eq!(Ok(ActivationFunc::SigmoidStepwise), fann.get_activation_func(2, 2));
         fann.set_activation_func(ActivationFunc::Sin, 2, 2);
         assert_eq!(Ok(ActivationFunc::Sin), fann.get_activation_func(2, 2));
+    }
+
+    #[test]
+    fn test_train_algorithm() {
+        let mut fann = Fann::new(&[4, 3, 3, 1]).unwrap();
+        assert_eq!(TrainAlgorithm::default_rprop(), fann.get_train_algorithm());
+        let quickprop = TrainAlgorithm::Quickprop {
+            decay: -0.0002,
+            mu: 1.5,
+        };
+        fann.set_train_algorithm(quickprop);
+        assert_eq!(quickprop, fann.get_train_algorithm());
     }
 }
