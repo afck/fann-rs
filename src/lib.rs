@@ -522,8 +522,6 @@ impl Fann {
         unsafe { fann_sys::fann_print_parameters(self.raw) }
     }
 
-    // TODO: save_to_fixed?
-
     /// Return an `Err` if the size of the slice does not match the number of input neurons,
     /// otherwise `Ok(())`.
     fn check_input_size(&self, input: &[fann_type]) -> FannResult<()> {
@@ -714,7 +712,17 @@ impl Fann {
         unsafe { fann_sys::fann_get_num_layers(self.raw) }
     }
 
-    // TODO: get_layer_array (layer_vec?)
+    /// Get the number of neurons in each layer of the network.
+    pub fn get_layer_sizes(&self) -> Vec<c_uint> {
+        let num_layers = self.get_num_layers() as usize;
+        let mut result = Vec::with_capacity(num_layers);
+        unsafe {
+            fann_sys::fann_get_layer_array(self.raw, result.as_mut_ptr());
+            result.set_len(num_layers);
+        }
+        result
+    }
+
     // TODO: get_bias_array (bias_vec?)
     // TODO: get_connection_array (connection_vec?)
     // TODO: set_weight_array?
@@ -723,8 +731,6 @@ impl Fann {
     pub fn set_weight(&mut self, from_neuron: c_uint, to_neuron: c_uint, weight: fann_type) {
         unsafe { fann_sys::fann_set_weight(self.raw, from_neuron, to_neuron, weight) }
     }
-
-    // TODO: user_data methods?
 
     /// Get the activation function for neuron number `neuron` in layer number `layer`, counting
     /// the input layer as number 0. Input layer neurons do not have an activation function, so
@@ -915,6 +921,9 @@ impl Fann {
     pub fn set_learning_momentum(&mut self, learning_momentum: c_float) {
         unsafe { fann_sys::fann_set_learning_momentum(self.raw, learning_momentum) }
     }
+
+    // TODO: save_to_fixed?
+    // TODO: user_data methods?
 }
 
 impl Drop for Fann {
@@ -967,5 +976,11 @@ mod tests {
         };
         fann.set_train_algorithm(quickprop);
         assert_eq!(quickprop, fann.get_train_algorithm());
+    }
+
+    #[test]
+    fn test_layer_sizes() {
+        let fann = Fann::new(&[4, 3, 3, 1]).unwrap();
+        assert_eq!(vec!(4, 3, 3, 1), fann.get_layer_sizes());
     }
 }
