@@ -1,7 +1,6 @@
 extern crate libc;
 extern crate fann_sys;
 
-use error::{FannError, FannErrorType, FannResult};
 use fann_sys::fann_activationfunc_enum::*;
 use fann_sys::fann_errorfunc_enum::*;
 use fann_sys::fann_nettype_enum::*;
@@ -9,12 +8,31 @@ use fann_sys::fann_stopfunc_enum::*;
 use fann_sys::fann_train_enum::*;
 use fann_sys::fann_type;
 use libc::{c_float, c_int, c_uint};
+use std::ffi::CString;
 use std::path::Path;
 use std::ptr::copy_nonoverlapping;
-use train_data::*;
 
-pub mod error;
-pub mod train_data;
+pub use error::{FannError, FannErrorType, FannResult};
+pub use train_data::TrainData;
+
+mod error;
+mod train_data;
+
+/// Convert a path to a `CString`.
+fn to_filename<P: AsRef<Path>>(path: P) -> Result<CString, FannError> {
+    match path.as_ref().to_str().map(|s| CString::new(s)) {
+        None => Err(FannError {
+                    error_type: FannErrorType::CantOpenTdR,
+                    error_str: "File name contains invalid unicode characters".to_string(),
+                }),
+        Some(Err(e)) => Err(FannError {
+                            error_type: FannErrorType::CantOpenTdR,
+                            error_str: format!("File name contains a nul byte at position {}",
+                                               e.nul_position()),
+                        }),
+        Some(Ok(cs)) => Ok(cs),
+    }
+}
 
 /// The Training algorithms used when training on `fann_train_data` with functions like
 /// `fann_train_on_data` or `fann_train_on_file`. The incremental training alters the weights
@@ -342,7 +360,6 @@ impl NetType {
         }
     }
 }
-
 pub struct Fann {
     // We don't consider setting and clearing the error string and number a mutation, and every
     // method should leave these fields cleared, either because it succeeded or because it read the
@@ -411,7 +428,7 @@ impl Fann {
 
     /// Read a neural network from a file.
     pub fn from_file<P: AsRef<Path>>(path: P) -> FannResult<Fann> {
-        let filename = try!(train_data::to_filename(path));
+        let filename = try!(to_filename(path));
         unsafe {
             let raw = fann_sys::fann_create_from_file(filename.as_ptr());
             try!(FannError::check_no_error(raw as *mut fann_sys::fann_error));
@@ -424,7 +441,7 @@ impl Fann {
     /// The file will contain all information about the neural network, except parameters generated
     /// during training, like mean square error and the bit fail limit.
     pub fn save<P: AsRef<Path>>(&self, path: P) -> FannResult<()> {
-        let filename = try!(train_data::to_filename(path));
+        let filename = try!(to_filename(path));
         unsafe {
             let result = fann_sys::fann_save(self.raw, filename.as_ptr());
             try!(FannError::check_no_error(self.raw as *mut fann_sys::fann_error));

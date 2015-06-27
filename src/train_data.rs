@@ -2,24 +2,8 @@ extern crate fann_sys;
 
 use error::{FannError, FannErrorType};
 use libc::c_uint;
-use std::ffi::CString;
 use std::path::Path;
-
-/// Convert a path to a `CString`.
-pub fn to_filename<P: AsRef<Path>>(path: P) -> Result<CString, FannError> {
-    match path.as_ref().to_str().map(|s| CString::new(s)) {
-        None => Err(FannError {
-                    error_type: FannErrorType::CantOpenTdR,
-                    error_str: "File name contains invalid unicode characters".to_string(),
-                }),
-        Some(Err(e)) => Err(FannError {
-                            error_type: FannErrorType::CantOpenTdR,
-                            error_str: format!("File name contains a nul byte at position {}",
-                                               e.nul_position()),
-                        }),
-        Some(Ok(cs)) => Ok(cs),
-    }
-}
+use super::to_filename;
 
 pub struct TrainData {
     raw: *mut fann_sys::fann_train_data,
