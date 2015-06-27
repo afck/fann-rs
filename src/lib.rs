@@ -3,14 +3,18 @@ extern crate fann_sys;
 
 use error::{FannError, FannErrorType};
 use fann_sys::fann_activationfunc_enum::*;
+use fann_sys::fann_errorfunc_enum::*;
+use fann_sys::fann_nettype_enum::*;
+use fann_sys::fann_stopfunc_enum::*;
 use fann_sys::fann_train_enum::*;
 use fann_sys::fann_type;
 use libc::{c_float, c_int, c_uint};
-use std::ffi::CString;
 use std::path::Path;
 use std::ptr::copy_nonoverlapping;
+use train_data::*;
 
 pub mod error;
+pub mod train_data;
 
 /// The Training algorithms used when training on `fann_train_data` with functions like
 /// `fann_train_on_data` or `fann_train_on_file`. The incremental training alters the weights
@@ -265,128 +269,74 @@ impl ActivationFunc {
     }
 }
 
-/// Convert the path to a `CString`.
-fn to_filename<P: AsRef<Path>>(path: P) -> Result<CString, FannError> {
-    match path.as_ref().to_str().map(|s| CString::new(s)) {
-        None => Err(FannError {
-                    error_type: FannErrorType::CantOpenTdR,
-                    error_str: "File name contains invalid unicode characters".to_string(),
-                }),
-        Some(Err(e)) => Err(FannError {
-                            error_type: FannErrorType::CantOpenTdR,
-                            error_str: format!("File name contains a nul byte at position {}",
-                                               e.nul_position()),
-                        }),
-        Some(Ok(cs)) => Ok(cs),
-    }
+/// Error function used during training.
+#[derive(Copy, Clone)]
+pub enum ErrorFunc {
+    /// Standard linear error function
+    Linear,
+    /// Tanh error function; usually better but may require a lower learning rate. This error
+    /// function aggressively targets outputs that differ much from the desired, while not targeting
+    /// outputs that only differ slightly. Not recommended for cascade or incremental training.
+    Tanh,
 }
 
-pub struct TrainData {
-    raw: *mut fann_sys::fann_train_data,
-}
-
-impl TrainData {
-    /// Read a file that stores training data.
-    ///
-    /// The file must be formatted like:
-    ///
-    /// ```text
-    /// num_train_data num_input num_output
-    /// inputdata separated by space
-    /// outputdata separated by space
-    /// .
-    /// .
-    /// .
-    /// inputdata separated by space
-    /// outputdata separated by space
-    /// ```
-    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<TrainData, FannError> {
-        let filename = try!(to_filename(path));
-        unsafe {
-            let raw = fann_sys::fann_read_train_from_file(filename.as_ptr());
-            try!(FannError::check_no_error(raw as *mut fann_sys::fann_error));
-            Ok(TrainData { raw: raw })
+impl ErrorFunc {
+    fn from_errorfunc_enum(ef_enum: fann_sys::fann_errorfunc_enum) -> ErrorFunc {
+        match ef_enum {
+            FANN_ERRORFUNC_LINEAR => ErrorFunc::Linear,
+            FANN_ERRORFUNC_TANH   => ErrorFunc::Tanh,
         }
     }
 
-    /// Save the training data to a file.
-    pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<(), FannError> {
-        let filename = try!(to_filename(path));
-        unsafe {
-            let result = fann_sys::fann_save_train(self.raw, filename.as_ptr());
-            try!(FannError::check_no_error(self.raw as *mut fann_sys::fann_error));
-            if result == -1 {
-                Err(FannError {
-                    error_type: FannErrorType::CantSaveFile,
-                    error_str: "Error saving training data".to_string(),
-                })
-            } else {
-                Ok(())
-            }
-        }
-    }
-
-    /// Merge the given data sets into a new one.
-    pub fn merge(data1: &TrainData, data2: &TrainData) -> Result<TrainData, FannError> {
-        unsafe {
-            let raw = fann_sys::fann_merge_train_data(data1.raw, data2.raw);
-            try!(FannError::check_no_error(raw as *mut fann_sys::fann_error));
-            Ok(TrainData { raw: raw })
-        }
-    }
-
-    /// Create a subset of the training data, starting at the given positon and consisting of
-    /// `length` samples.
-    pub fn subset(&self, pos: c_uint, length: c_uint) -> Result<TrainData, FannError> {
-        unsafe {
-            let raw = fann_sys::fann_subset_train_data(self.raw, pos, length);
-            try!(FannError::check_no_error(raw as *mut fann_sys::fann_error));
-            Ok(TrainData { raw: raw })
-        }
-    }
-
-    /// Return the number of training patterns in the data.
-    pub fn length(&self) -> c_uint {
-        unsafe { fann_sys::fann_length_train_data(self.raw) }
-    }
-
-    /// Return the number of input values in each training pattern.
-    pub fn num_input(&self) -> c_uint {
-        unsafe { fann_sys::fann_num_input_train_data(self.raw) }
-    }
-
-    /// Return the number of output values in each training pattern.
-    pub fn num_output(&self) -> c_uint {
-        unsafe { fann_sys::fann_num_output_train_data(self.raw) }
-    }
-
-    // TODO: from_callback
-    // TODO: `scale` methods
-    // TODO: save_to_fixed?
-
-    /// Shuffle training data, randomizing the order. This is recommended for incremental training
-    /// while it does not affect batch training.
-    pub fn shuffle(&mut self) {
-        unsafe { fann_sys::fann_shuffle_train_data(self.raw); }
-    }
-}
-
-impl Clone for TrainData {
-    fn clone(&self) -> TrainData {
-        unsafe {
-            let raw = fann_sys::fann_duplicate_train_data(self.raw);
-            // TODO: Incorporate null check into check_no_error?
-            if FannError::check_no_error(raw as *mut fann_sys::fann_error).is_err() {
-                panic!("Unable to clone TrainData.");
-            }
-            TrainData { raw: raw }
+    fn to_errorfunc_enum(&self) -> fann_sys::fann_errorfunc_enum {
+        match *self {
+            ErrorFunc::Linear => FANN_ERRORFUNC_LINEAR,
+            ErrorFunc::Tanh   => FANN_ERRORFUNC_TANH,
         }
     }
 }
 
-impl Drop for TrainData {
-    fn drop(&mut self) {
-        unsafe { fann_sys::fann_destroy_train(self.raw); }
+/// Stop critieria for training.
+#[derive(Copy, Clone)]
+pub enum StopFunc {
+    /// The mean square error of the whole output.
+    Mse,
+    /// The number of training data points where the output neuron's error was greater than the bit
+    /// fail limit. Every neuron is counted for every training data sample where it fails.
+    Bit,
+}
+
+impl StopFunc {
+    fn from_stopfunc_enum(sf_enum: fann_sys::fann_stopfunc_enum) -> StopFunc {
+        match sf_enum {
+            FANN_STOPFUNC_MSE => StopFunc::Mse,
+            FANN_STOPFUNC_BIT => StopFunc::Bit,
+        }
+    }
+
+    fn to_stopfunc_enum(&self) -> fann_sys::fann_stopfunc_enum {
+        match *self {
+            StopFunc::Mse => FANN_STOPFUNC_MSE,
+            StopFunc::Bit => FANN_STOPFUNC_BIT,
+        }
+    }
+}
+
+/// Network types
+#[derive(Copy, Clone)]
+pub enum NetType {
+    /// Each layer of neurons only has connections to the next layer.
+    Layer,
+    /// Each layer has connections to all following layers.
+    Shortcut,
+}
+
+impl NetType {
+    fn from_nettype_enum(nt_enum: fann_sys::fann_nettype_enum) -> NetType {
+        match nt_enum {
+            FANN_NETTYPE_LAYER    => NetType::Layer,
+            FANN_NETTYPE_SHORTCUT => NetType::Shortcut,
+        }
     }
 }
 
@@ -444,6 +394,23 @@ impl Fann {
             Ok(Fann { raw: raw })
         }
     }
+
+    /// Create a neural network which has shortcut connections, i. e. it doesn't connect only each
+    /// layer to its successor, but every layer with every later layer: Each neuron has connections
+    /// to all neurons in all subsequent layers.
+    pub fn new_shortcut(layers: &[c_uint]) -> Result<Fann, FannError> {
+        unsafe {
+            let raw = fann_sys::fann_create_shortcut_array(layers.len() as c_uint, layers.as_ptr());
+            try!(FannError::check_no_error(raw as *mut fann_sys::fann_error));
+            Ok(Fann { raw: raw })
+        }
+    }
+
+    // TODO: save methods
+    // TODO: from_file
+    // TODO: randomize_weights
+    // TODO: init_weights
+    // TODO: print methods
 
     /// Return an `Err` if the size of the slice does not match the number of input neurons,
     /// otherwise `Ok(())`.
@@ -505,7 +472,7 @@ impl Fann {
                          desired_error: c_float) -> Result<(), FannError> {
         unsafe {
             fann_sys::fann_train_on_data(self.raw,
-                                         data.raw,
+                                         data.get_raw(),
                                          max_epochs,
                                          epochs_between_reports,
                                          desired_error);
@@ -532,7 +499,7 @@ impl Fann {
     /// use this value during training.
     pub fn train_epoch(&mut self, data: &TrainData) -> Result<c_float, FannError> {
         unsafe {
-            let mse = fann_sys::fann_train_epoch(self.raw, data.raw);
+            let mse = fann_sys::fann_train_epoch(self.raw, data.get_raw());
             try!(FannError::check_no_error(self.raw as *mut fann_sys::fann_error));
             Ok(mse)
         }
@@ -560,7 +527,7 @@ impl Fann {
     /// Test with a training data set and calculate the mean square error.
     pub fn test_data(&mut self, data: &TrainData) -> Result<c_float, FannError> {
         unsafe {
-            let mse = fann_sys::fann_test_data(self.raw, data.raw);
+            let mse = fann_sys::fann_test_data(self.raw, data.get_raw());
             try!(FannError::check_no_error(self.raw as *mut fann_sys::fann_error));
             Ok(mse)
         }
@@ -578,7 +545,7 @@ impl Fann {
     }
 
     /// Reset the mean square error and bit fail count.
-    pub fn reset_mse(&mut self) {
+    pub fn reset_mse_and_bit_fail(&mut self) {
         unsafe { fann_sys::fann_reset_MSE(self.raw); }
     }
 
@@ -608,6 +575,56 @@ impl Fann {
         unsafe { fann_sys::fann_get_num_output(self.raw) }
     }
 
+    /// Get the total number of neurons, including the bias neurons.
+    ///
+    /// E. g. a 2-4-2 network has 3 + 5 + 2 = 10 neurons (because two layers have bias neurons).
+    pub fn get_total_neurons(&self) -> c_uint {
+        unsafe { fann_sys::fann_get_total_neurons(self.raw) }
+    }
+
+    /// Get the total number of connections.
+    pub fn get_total_connections(&self) -> c_uint {
+        unsafe { fann_sys::fann_get_total_connections(self.raw) }
+    }
+
+    /// Get the type of the neural network.
+    pub fn get_network_type(&self) -> NetType {
+        let nt_enum = unsafe { fann_sys::fann_get_network_type(self.raw) };
+        NetType::from_nettype_enum(nt_enum)
+    }
+
+    /// Get the connection rate used when the network was created.
+    pub fn get_connection_rate(&self) -> c_float {
+        unsafe { fann_sys::fann_get_connection_rate(self.raw) }
+    }
+
+    /// Get the number of layers in the network.
+    pub fn get_num_layers(&self) -> c_uint {
+        unsafe { fann_sys::fann_get_num_layers(self.raw) }
+    }
+
+    // TODO: get_layer_array (layer_vec?)
+    // TODO: get_bias_array (bias_vec?)
+    // TODO: get_connection_array (connection_vec?)
+    // TODO: set_weight methods
+    // TODO: user_data methods?
+
+    /// Get the activation function for neuron number `neuron` in layer number `layer`, counting
+    /// the input layer as number 0. Input layer neurons do not have an activation function, so
+    /// `layer` must be at least 1.
+    pub fn get_activation_func(&self, layer: c_int, neuron: c_int) -> Option<ActivationFunc> {
+        let af_enum = unsafe { fann_sys::fann_get_activation_function(self.raw, layer, neuron) };
+        ActivationFunc::from_fann_activationfunc_enum(af_enum)
+    }
+
+    /// Set the activation function for neuron number `neuron` in layer number `layer`, counting
+    /// the input layer as number 0. Input layer neurons do not have an activation function, so
+    /// `layer` must be at least 1.
+    pub fn set_activation_func(&mut self, af: ActivationFunc, layer: c_int, neuron: c_int) {
+        let af_enum = af.to_fann_activationfunc_enum();
+        unsafe { fann_sys::fann_set_activation_function(self.raw, af_enum, layer, neuron) }
+    }
+
     /// Set the activation function for all hidden layers.
     pub fn set_activation_func_hidden(&mut self, activation_func: ActivationFunc) {
         unsafe {
@@ -624,21 +641,89 @@ impl Fann {
         }
     }
 
-    /// Get the activation function for neuron number `neuron` in layer number `layer`, counting
-    /// the input layer as number 0. Input layer neurons do not have an activation function, so
-    /// `layer` must be at least 1.
-    pub fn get_activation_func(&self, layer: c_int, neuron: c_int) -> Option<ActivationFunc> {
-        let af_enum = unsafe { fann_sys::fann_get_activation_function(self.raw, layer, neuron) };
-        ActivationFunc::from_fann_activationfunc_enum(af_enum)
+    /// Get the activation steepness for neuron number `neuron` in layer number `layer`.
+    pub fn get_activation_steepness(&self, layer: c_int, neuron: c_int) -> Option<fann_type> {
+        let steepness = unsafe { fann_sys::fann_get_activation_steepness(self.raw, layer, neuron) };
+        match steepness {
+            -1.0 => None,
+            s    => Some(s),
+        }
     }
 
-    /// Set the activation function for neuron number `neuron` in layer number `layer`, counting
-    /// the input layer as number 0. Input layer neurons do not have an activation function, so
-    /// `layer` must be at least 1.
-    pub fn set_activation_func(&self, af: ActivationFunc, layer: c_int, neuron: c_int) {
-        let af_enum = af.to_fann_activationfunc_enum();
-        unsafe { fann_sys::fann_set_activation_function(self.raw, af_enum, layer, neuron) }
+    /// Set the activation steepness for neuron number `neuron` in layer number `layer`, counting
+    /// the input layer as number 0. Input layer neurons do not have an activation steepness, so
+    /// layer must be at least 1.
+    ///
+    /// The steepness determines how fast the function goes from minimum to maximum. A higher value
+    /// will result in more aggressive training.
+    ///
+    /// A steep activation function is adequate if outputs are binary, e. e. they are supposed to
+    /// be either almost 0 or almost 1.
+    ///
+    /// The default value is 0.5.
+    pub fn set_activation_steepness(&self, steepness: fann_type, layer: c_int, neuron: c_int) {
+        unsafe { fann_sys::fann_set_activation_steepness(self.raw, steepness, layer, neuron) }
     }
+
+    /// Set the activation steepness for layer number `layer`.
+    pub fn set_activation_steepness_layer(&self, steepness: fann_type, layer: c_int) {
+        unsafe { fann_sys::fann_set_activation_steepness_layer(self.raw, steepness, layer) }
+    }
+
+    /// Set the activation steepness for all hidden layers.
+    pub fn set_activation_steepness_hidden(&self, steepness: fann_type) {
+        unsafe { fann_sys::fann_set_activation_steepness_hidden(self.raw, steepness) }
+    }
+
+    /// Set the activation steepness for the output layer.
+    pub fn set_activation_steepness_output(&self, steepness: fann_type) {
+        unsafe { fann_sys::fann_set_activation_steepness_output(self.raw, steepness) }
+    }
+
+    /// Get the error function used during training.
+    pub fn get_error_func(&self) -> ErrorFunc {
+        let ef_enum = unsafe { fann_sys::fann_get_train_error_function(self.raw) };
+        ErrorFunc::from_errorfunc_enum(ef_enum)
+    }
+
+    /// Set the error function used during training.
+    ///
+    /// The default is `Tanh`.
+    pub fn set_error_func(&mut self, ef: ErrorFunc) {
+        let ef_enum = ef.to_errorfunc_enum();
+        unsafe { fann_sys::fann_set_train_error_function(self.raw, ef_enum) }
+    }
+
+    /// Get the stop criterion for training.
+    pub fn get_stop_func(&self) -> StopFunc {
+        let sf_enum = unsafe { fann_sys::fann_get_train_stop_function(self.raw) };
+        StopFunc::from_stopfunc_enum(sf_enum)
+    }
+
+    /// Set the stop criterion for training.
+    ///
+    /// The default is `Mse`.
+    pub fn set_stop_func(&mut self, sf: StopFunc) {
+        let sf_enum = sf.to_stopfunc_enum();
+        unsafe { fann_sys::fann_set_train_stop_function(self.raw, sf_enum) }
+    }
+
+    /// Get the bit fail limit.
+    pub fn get_bit_fail_limit(&self) -> fann_type {
+        unsafe { fann_sys::fann_get_bit_fail_limit(self.raw) }
+    }
+
+    /// Set the bit fail limit.
+    ///
+    /// Each output neuron value that differs from the desired output by more than the bit fail
+    /// limit is counted as a failed bit.
+    pub fn set_bit_fail_limit(&mut self, bit_fail_limit: fann_type) {
+        unsafe { fann_sys::fann_set_bit_fail_limit(self.raw, bit_fail_limit) }
+    }
+
+    // TODO: quickprop methods
+    // TODO: rprop methods
+    // TODO: cascadetrain methods
 
     /// Get the currently configured training algorithm.
     pub fn get_train_algorithm(&self) -> TrainAlgorithm {
@@ -647,7 +732,7 @@ impl Fann {
     }
 
     /// Set the algorithm to be used for training.
-    pub fn set_train_algorithm(&self, ta: TrainAlgorithm) {
+    pub fn set_train_algorithm(&mut self, ta: TrainAlgorithm) {
         let ft_enum = ta.to_fann_train_enum();
         unsafe { fann_sys::fann_set_training_algorithm(self.raw, ft_enum) }
     }
@@ -660,7 +745,7 @@ impl Fann {
 
     /// Set the learning rate, which is used to determine how aggressive training should be (not
     /// used by the RPROP algorithm). The default is 0.7.
-    pub fn set_learning_rate(&self, learning_rate: c_float) {
+    pub fn set_learning_rate(&mut self, learning_rate: c_float) {
         unsafe { fann_sys::fann_set_learning_rate(self.raw, learning_rate) }
     }
 
@@ -672,7 +757,7 @@ impl Fann {
 
     /// Set the learning momentum used in incremental training. It is recommended to use a value
     /// between 0.0 and 1.0. The default is 1.0.
-    pub fn set_learning_momentum(&self, learning_momentum: c_float) {
+    pub fn set_learning_momentum(&mut self, learning_momentum: c_float) {
         unsafe { fann_sys::fann_set_learning_momentum(self.raw, learning_momentum) }
     }
 }
