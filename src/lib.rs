@@ -409,10 +409,52 @@ impl Fann {
         }
     }
 
-    // TODO: save methods
-    // TODO: from_file
-    // TODO: randomize_weights
-    // TODO: init_weights
+    /// Read a neural network from a file.
+    pub fn from_file<P: AsRef<Path>>(path: P) -> FannResult<Fann> {
+        let filename = try!(train_data::to_filename(path));
+        unsafe {
+            let raw = fann_sys::fann_create_from_file(filename.as_ptr());
+            try!(FannError::check_no_error(raw as *mut fann_sys::fann_error));
+            Ok(Fann { raw: raw })
+        }
+    }
+
+    /// Save the network to a configuration file.
+    ///
+    /// The file will contain all information about the neural network, except parameters generated
+    /// during training, like mean square error and the bit fail limit.
+    pub fn save<P: AsRef<Path>>(&self, path: P) -> FannResult<()> {
+        let filename = try!(train_data::to_filename(path));
+        unsafe {
+            let result = fann_sys::fann_save(self.raw, filename.as_ptr());
+            try!(FannError::check_no_error(self.raw as *mut fann_sys::fann_error));
+            match result {
+                0 => Ok(()),
+                _ => Err(FannError {
+                         error_type: FannErrorType::CantSaveFile,
+                         error_str: "Error saving network".to_string(),
+                     }),
+            }
+        }
+    }
+
+    /// Give each connection a random weight between `min_weight` and `max_weight`.
+    ///
+    /// By default, weights in a new network are random between -0.1 and 0.1.
+    pub fn randomize_weights(&mut self, min_weight: fann_type, max_weight: fann_type) {
+        unsafe { fann_sys::fann_randomize_weights(self.raw, min_weight, max_weight) }
+    }
+
+    /// Initialize the weights using Widrow & Nguyen's algorithm.
+    ///
+    /// The algorithm developed by Derrick Nguyen and Bernard Widrow sets the weight in a way that
+    /// can speed up training with the given training data. This technique is not always successful
+    /// and in some cases can even be less efficient that a purely random initialization.
+    pub fn init_weights(&mut self, train_data: &TrainData) {
+        unsafe { fann_sys::fann_init_weights(self.raw, train_data.get_raw()) }
+    }
+
+    // TODO: save_to_fixed
     // TODO: print methods
 
     /// Return an `Err` if the size of the slice does not match the number of input neurons,
@@ -423,7 +465,7 @@ impl Fann {
             Ok(())
         } else {
             Err(FannError {
-                error_type: FannErrorType::IndexOutOfBound, // TODO: New error type?
+                error_type: FannErrorType::IndexOutOfBound,
                 error_str: format!("Input has length {}, but there are {} input neurons",
                                    input.len(), num_input),
             })
@@ -438,7 +480,7 @@ impl Fann {
             Ok(())
         } else {
             Err(FannError {
-                error_type: FannErrorType::IndexOutOfBound, // TODO: New error type?
+                error_type: FannErrorType::IndexOutOfBound,
                 error_str: format!("Output has length {}, but there are {} output neurons",
                                    output.len(), num_output),
             })
@@ -608,7 +650,13 @@ impl Fann {
     // TODO: get_layer_array (layer_vec?)
     // TODO: get_bias_array (bias_vec?)
     // TODO: get_connection_array (connection_vec?)
-    // TODO: set_weight methods
+    // TODO: set_weight_array?
+
+    /// Set the weight of the given connection.
+    pub fn set_weight(&mut self, from_neuron: c_uint, to_neuron: c_uint, weight: fann_type) {
+        unsafe { fann_sys::fann_set_weight(self.raw, from_neuron, to_neuron, weight) }
+    }
+
     // TODO: user_data methods?
 
     /// Get the activation function for neuron number `neuron` in layer number `layer`, counting

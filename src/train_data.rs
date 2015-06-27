@@ -5,8 +5,8 @@ use libc::c_uint;
 use std::ffi::CString;
 use std::path::Path;
 
-/// Convert the path to a `CString`.
-fn to_filename<P: AsRef<Path>>(path: P) -> Result<CString, FannError> {
+/// Convert a path to a `CString`.
+pub fn to_filename<P: AsRef<Path>>(path: P) -> Result<CString, FannError> {
     match path.as_ref().to_str().map(|s| CString::new(s)) {
         None => Err(FannError {
                     error_type: FannErrorType::CantOpenTdR,
