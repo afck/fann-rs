@@ -723,7 +723,17 @@ impl Fann {
         result
     }
 
-    // TODO: get_bias_array (bias_vec?)
+    /// Get the number of bias neurons in each layer of the network.
+    pub fn get_bias_counts(&self) -> Vec<c_uint> {
+        let num_layers = self.get_num_layers() as usize;
+        let mut result = Vec::with_capacity(num_layers);
+        unsafe {
+            fann_sys::fann_get_bias_array(self.raw, result.as_mut_ptr());
+            result.set_len(num_layers);
+        }
+        result
+    }
+
     // TODO: get_connection_array (connection_vec?)
     // TODO: set_weight_array?
 
@@ -982,5 +992,6 @@ mod tests {
     fn test_layer_sizes() {
         let fann = Fann::new(&[4, 3, 3, 1]).unwrap();
         assert_eq!(vec!(4, 3, 3, 1), fann.get_layer_sizes());
+        assert_eq!(vec!(1, 1, 1, 0), fann.get_bias_counts());
     }
 }
