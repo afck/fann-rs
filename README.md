@@ -9,4 +9,4 @@ safe interface to FANN on top of the [low-level bindings](https://github.com/afc
 
 It is work in progress and is still missing some functionality.
 
-[Documentation](https://afck.github.io/docs/fann-rs/fann_sys)
+[Documentation](https://afck.github.io/docs/fann-rs/fann)
