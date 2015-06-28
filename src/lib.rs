@@ -1,14 +1,10 @@
 extern crate libc;
 extern crate fann_sys;
 
-use fann_sys::fann_activationfunc_enum::*;
-use fann_sys::fann_errorfunc_enum::*;
-use fann_sys::fann_nettype_enum::*;
-use fann_sys::fann_stopfunc_enum::*;
-use fann_sys::fann_train_enum::*;
-use fann_sys::fann_type;
+use fann_sys::*;
 use libc::{c_float, c_int, c_uint};
 use std::ffi::CString;
+use std::mem::forget;
 use std::path::Path;
 use std::ptr::copy_nonoverlapping;
 
@@ -18,7 +14,7 @@ pub use train_data::TrainData;
 mod error;
 mod train_data;
 
-pub type Connection = fann_sys::fann_connection;
+pub type Connection = fann_connection;
 
 /// Convert a path to a `CString`.
 fn to_filename<P: AsRef<Path>>(path: P) -> Result<CString, FannError> {
@@ -107,6 +103,94 @@ impl TrainAlgorithm {
 impl Default for TrainAlgorithm {
     fn default() -> TrainAlgorithm {
         TrainAlgorithm::default_rprop()
+    }
+}
+
+/// Parameters for cascade training.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CascadeParams {
+    /// A number between 0 and 1 determining how large a fraction the mean square error should
+    /// change within `output_stagnation_epochs` during training of the output connections, in
+    /// order for the training to stagnate. After stagnation, training of the output connections
+    /// ends and new candidates are prepared.
+    ///
+    /// This means: If the MSE does not change by a fraction of `output_change_fraction` during a
+    /// period of `output_stagnation_epochs`, the training of the output connections is stopped
+    /// because training has stagnated.
+    pub output_change_fraction: c_float,
+    /// The number of epochs training is allowed to continue without changing the MSE by a fraction
+    /// of at least `output_change_fraction`.
+    pub output_stagnation_epochs: c_uint,
+    /// A number between 0 and 1 determining how large a fraction the mean square error should
+    /// change within `candidate_stagnation_epochs` during training of the candidate neurons, in
+    /// order for the training to stagnate. After stagnation, training of the candidate neurons is
+    /// stopped and the best candidate is selected.
+    ///
+    /// This means: If the MSE does not change by a fraction of `candidate_change_fraction` during
+    /// a period of `candidate_stagnation_epochs`, the training of the candidate neurons is stopped
+    /// because training has stagnated.
+    pub candidate_change_fraction: c_float,
+    /// The number of epochs training is allowed to continue without changing the MSE by a fraction
+    /// of `candidate_change_fraction`.
+    pub candidate_stagnation_epochs: c_uint,
+    /// A limit for how much the candidate neuron may be trained. It limits the ratio between the
+    /// MSE and the candidate score.
+    pub candidate_limit: fann_type,
+    /// Multiplier for the weight of the candidate neuron before adding it to the network. Usually
+    /// between 0 and 1, to make training less aggressive.
+    pub weight_multiplier: fann_type,
+    /// The maximum number of epochs the output connections may be trained after adding a new
+    /// candidate neuron.
+    pub max_out_epochs: c_uint,
+    /// The maximum number of epochs the input connections to the candidates may be trained before
+    /// adding a new candidate neuron.
+    pub max_cand_epochs: c_uint,
+    /// The activation functions for the candidate neurons.
+    pub activation_functions: Vec<ActivationFunc>,
+    /// The activation function steepness values for the candidate neurons.
+    pub activation_steepnesses: Vec<fann_type>,
+    /// The number of candidate neurons to be trained for each combination of activation function
+    /// and steepness.
+    pub num_candidate_groups: c_uint,
+}
+
+impl CascadeParams {
+    /// The number of candidates used during training: the number of combinations of activation
+    /// functions and steepnesses, times `num_candidate_groups`.
+    ///
+    /// For every combination of activation function and steepness, `num_candidate_groups` such
+    /// neurons, with different initial weights, are trained.
+    pub fn get_num_candidates(&self) -> c_uint {
+        self.activation_functions.len() as c_uint
+            * self.activation_steepnesses.len() as c_uint
+            * self.num_candidate_groups
+    }
+}
+
+impl Default for CascadeParams {
+    fn default() -> CascadeParams {
+        CascadeParams {
+            output_change_fraction: 0.01,
+            output_stagnation_epochs: 12,
+            candidate_change_fraction: 0.01,
+            candidate_stagnation_epochs: 12,
+            candidate_limit: 1000.0,
+            weight_multiplier: 0.4,
+            max_out_epochs: 150,
+            max_cand_epochs: 150,
+            activation_functions: vec!(ActivationFunc::Sigmoid,
+                                       ActivationFunc::SigmoidSymmetric,
+                                       ActivationFunc::Gaussian,
+                                       ActivationFunc::GaussianSymmetric,
+                                       ActivationFunc::Elliott,
+                                       ActivationFunc::ElliottSymmetric,
+                                       ActivationFunc::SinSymmetric,
+                                       ActivationFunc::CosSymmetric,
+                                       ActivationFunc::Sin,
+                                       ActivationFunc::Cos),
+            activation_steepnesses: vec!(0.25, 0.5, 0.75, 1.0),
+            num_candidate_groups: 2,
+        }
     }
 }
 
@@ -264,7 +348,7 @@ pub enum ActivationFunc {
 }
 
 impl ActivationFunc {
-    fn from_fann_activationfunc_enum(af_enum: fann_sys::fann_activationfunc_enum)
+    fn from_fann_activationfunc_enum(af_enum: fann_activationfunc_enum)
             -> FannResult<ActivationFunc> {
         match af_enum {
             FANN_NONE => Err(FannError {
@@ -292,7 +376,7 @@ impl ActivationFunc {
         }
     }
 
-    fn to_fann_activationfunc_enum(&self) -> fann_sys::fann_activationfunc_enum {
+    fn to_fann_activationfunc_enum(&self) -> fann_activationfunc_enum {
         match *self {
             ActivationFunc::Linear                   => FANN_LINEAR,
             ActivationFunc::Threshold                => FANN_THRESHOLD,
@@ -328,14 +412,14 @@ pub enum ErrorFunc {
 }
 
 impl ErrorFunc {
-    fn from_errorfunc_enum(ef_enum: fann_sys::fann_errorfunc_enum) -> ErrorFunc {
+    fn from_errorfunc_enum(ef_enum: fann_errorfunc_enum) -> ErrorFunc {
         match ef_enum {
             FANN_ERRORFUNC_LINEAR => ErrorFunc::Linear,
             FANN_ERRORFUNC_TANH   => ErrorFunc::Tanh,
         }
     }
 
-    fn to_errorfunc_enum(&self) -> fann_sys::fann_errorfunc_enum {
+    fn to_errorfunc_enum(&self) -> fann_errorfunc_enum {
         match *self {
             ErrorFunc::Linear => FANN_ERRORFUNC_LINEAR,
             ErrorFunc::Tanh   => FANN_ERRORFUNC_TANH,
@@ -354,14 +438,14 @@ pub enum StopFunc {
 }
 
 impl StopFunc {
-    fn from_stopfunc_enum(sf_enum: fann_sys::fann_stopfunc_enum) -> StopFunc {
+    fn from_stopfunc_enum(sf_enum: fann_stopfunc_enum) -> StopFunc {
         match sf_enum {
             FANN_STOPFUNC_MSE => StopFunc::Mse,
             FANN_STOPFUNC_BIT => StopFunc::Bit,
         }
     }
 
-    fn to_stopfunc_enum(&self) -> fann_sys::fann_stopfunc_enum {
+    fn to_stopfunc_enum(&self) -> fann_stopfunc_enum {
         match *self {
             StopFunc::Mse => FANN_STOPFUNC_MSE,
             StopFunc::Bit => FANN_STOPFUNC_BIT,
@@ -379,7 +463,7 @@ pub enum NetType {
 }
 
 impl NetType {
-    fn from_nettype_enum(nt_enum: fann_sys::fann_nettype_enum) -> NetType {
+    fn from_nettype_enum(nt_enum: fann_nettype_enum) -> NetType {
         match nt_enum {
             FANN_NETTYPE_LAYER    => NetType::Layer,
             FANN_NETTYPE_SHORTCUT => NetType::Shortcut,
@@ -392,7 +476,7 @@ pub struct Fann {
     // fields and returned the corresponding error.
     // We also don't consider writing the output data a mutation, as we don't provide access to it
     // and copy it before returning it.
-    raw: *mut fann_sys::fann,
+    raw: *mut fann,
 }
 
 impl Fann {
@@ -433,10 +517,10 @@ impl Fann {
     ///                       and ending with the output layer.
     pub fn new_sparse(connection_rate: c_float, layers: &[c_uint]) -> FannResult<Fann> {
         unsafe {
-            let raw = fann_sys::fann_create_sparse_array(connection_rate,
+            let raw = fann_create_sparse_array(connection_rate,
                                                          layers.len() as c_uint,
                                                          layers.as_ptr());
-            try!(FannError::check_no_error(raw as *mut fann_sys::fann_error));
+            try!(FannError::check_no_error(raw as *mut fann_error));
             Ok(Fann { raw: raw })
         }
     }
@@ -446,8 +530,8 @@ impl Fann {
     /// to all neurons in all subsequent layers.
     pub fn new_shortcut(layers: &[c_uint]) -> FannResult<Fann> {
         unsafe {
-            let raw = fann_sys::fann_create_shortcut_array(layers.len() as c_uint, layers.as_ptr());
-            try!(FannError::check_no_error(raw as *mut fann_sys::fann_error));
+            let raw = fann_create_shortcut_array(layers.len() as c_uint, layers.as_ptr());
+            try!(FannError::check_no_error(raw as *mut fann_error));
             Ok(Fann { raw: raw })
         }
     }
@@ -456,8 +540,8 @@ impl Fann {
     pub fn from_file<P: AsRef<Path>>(path: P) -> FannResult<Fann> {
         let filename = try!(to_filename(path));
         unsafe {
-            let raw = fann_sys::fann_create_from_file(filename.as_ptr());
-            try!(FannError::check_no_error(raw as *mut fann_sys::fann_error));
+            let raw = fann_create_from_file(filename.as_ptr());
+            try!(FannError::check_no_error(raw as *mut fann_error));
             Ok(Fann { raw: raw })
         }
     }
@@ -469,8 +553,8 @@ impl Fann {
     pub fn save<P: AsRef<Path>>(&self, path: P) -> FannResult<()> {
         let filename = try!(to_filename(path));
         unsafe {
-            let result = fann_sys::fann_save(self.raw, filename.as_ptr());
-            try!(FannError::check_no_error(self.raw as *mut fann_sys::fann_error));
+            let result = fann_save(self.raw, filename.as_ptr());
+            try!(FannError::check_no_error(self.raw as *mut fann_error));
             match result {
                 0 => Ok(()),
                 _ => Err(FannError {
@@ -485,7 +569,7 @@ impl Fann {
     ///
     /// By default, weights in a new network are random between -0.1 and 0.1.
     pub fn randomize_weights(&mut self, min_weight: fann_type, max_weight: fann_type) {
-        unsafe { fann_sys::fann_randomize_weights(self.raw, min_weight, max_weight) }
+        unsafe { fann_randomize_weights(self.raw, min_weight, max_weight) }
     }
 
     /// Initialize the weights using Widrow & Nguyen's algorithm.
@@ -494,7 +578,7 @@ impl Fann {
     /// can speed up training with the given training data. This technique is not always successful
     /// and in some cases can even be less efficient that a purely random initialization.
     pub fn init_weights(&mut self, train_data: &TrainData) {
-        unsafe { fann_sys::fann_init_weights(self.raw, train_data.get_raw()) }
+        unsafe { fann_init_weights(self.raw, train_data.get_raw()) }
     }
 
     /// Print the connections of the network in a compact matrix, for easy viewing of its
@@ -522,12 +606,12 @@ impl Fann {
     /// To simplify the matrix output neurons are not visible as neurons that connections can come
     /// from, and input and bias neurons are not visible as neurons that connections can go to.
     pub fn print_connections(&self) {
-        unsafe { fann_sys::fann_print_connections(self.raw) }
+        unsafe { fann_print_connections(self.raw) }
     }
 
     /// Print all parameters and options of the network.
     pub fn print_parameters(&self) {
-        unsafe { fann_sys::fann_print_parameters(self.raw) }
+        unsafe { fann_print_parameters(self.raw) }
     }
 
     /// Return an `Err` if the size of the slice does not match the number of input neurons,
@@ -566,8 +650,8 @@ impl Fann {
         unsafe {
             try!(self.check_input_size(input));
             try!(self.check_output_size(desired_output));
-            fann_sys::fann_train(self.raw, input.as_ptr(), desired_output.as_ptr());
-            try!(FannError::check_no_error(self.raw as *mut fann_sys::fann_error));
+            fann_train(self.raw, input.as_ptr(), desired_output.as_ptr());
+            try!(FannError::check_no_error(self.raw as *mut fann_error));
         }
         Ok(())
     }
@@ -588,12 +672,12 @@ impl Fann {
                          epochs_between_reports: c_uint,
                          desired_error: c_float) -> FannResult<()> {
         unsafe {
-            fann_sys::fann_train_on_data(self.raw,
+            fann_train_on_data(self.raw,
                                          data.get_raw(),
                                          max_epochs,
                                          epochs_between_reports,
                                          desired_error);
-            FannError::check_no_error(self.raw as *mut fann_sys::fann_error)
+            FannError::check_no_error(self.raw as *mut fann_error)
         }
     }
 
@@ -616,8 +700,8 @@ impl Fann {
     /// use this value during training.
     pub fn train_epoch(&mut self, data: &TrainData) -> FannResult<c_float> {
         unsafe {
-            let mse = fann_sys::fann_train_epoch(self.raw, data.get_raw());
-            try!(FannError::check_no_error(self.raw as *mut fann_sys::fann_error));
+            let mse = fann_train_epoch(self.raw, data.get_raw());
+            try!(FannError::check_no_error(self.raw as *mut fann_error));
             Ok(mse)
         }
     }
@@ -633,8 +717,8 @@ impl Fann {
         let num_output = self.get_num_output() as usize;
         let mut result = Vec::with_capacity(num_output);
         unsafe {
-            let output = fann_sys::fann_test(self.raw, input.as_ptr(), desired_output.as_ptr());
-            try!(FannError::check_no_error(self.raw as *mut fann_sys::fann_error));
+            let output = fann_test(self.raw, input.as_ptr(), desired_output.as_ptr());
+            try!(FannError::check_no_error(self.raw as *mut fann_error));
             copy_nonoverlapping(output, result.as_mut_ptr(), num_output);
             result.set_len(num_output);
         }
@@ -644,26 +728,26 @@ impl Fann {
     /// Test with a training data set and calculate the mean square error.
     pub fn test_data(&mut self, data: &TrainData) -> FannResult<c_float> {
         unsafe {
-            let mse = fann_sys::fann_test_data(self.raw, data.get_raw());
-            try!(FannError::check_no_error(self.raw as *mut fann_sys::fann_error));
+            let mse = fann_test_data(self.raw, data.get_raw());
+            try!(FannError::check_no_error(self.raw as *mut fann_error));
             Ok(mse)
         }
     }
 
     /// Get the mean square error.
     pub fn get_mse(&self) -> c_float {
-        unsafe { fann_sys::fann_get_MSE(self.raw) }
+        unsafe { fann_get_MSE(self.raw) }
     }
 
     /// Get the number of fail bits, i. e. the number of neurons which differed from the desired
     /// output by more than the bit fail limit since the previous reset.
     pub fn get_bit_fail(&self) -> c_uint {
-        unsafe { fann_sys::fann_get_bit_fail(self.raw) }
+        unsafe { fann_get_bit_fail(self.raw) }
     }
 
     /// Reset the mean square error and bit fail count.
     pub fn reset_mse_and_bit_fail(&mut self) {
-        unsafe { fann_sys::fann_reset_MSE(self.raw); }
+        unsafe { fann_reset_MSE(self.raw); }
     }
 
     /// Run the input through the neural network and returns the output. The length of the input
@@ -674,8 +758,8 @@ impl Fann {
         let num_output = self.get_num_output() as usize;
         let mut result = Vec::with_capacity(num_output);
         unsafe {
-            let output = fann_sys::fann_run(self.raw, input.as_ptr());
-            try!(FannError::check_no_error(self.raw as *mut fann_sys::fann_error));
+            let output = fann_run(self.raw, input.as_ptr());
+            try!(FannError::check_no_error(self.raw as *mut fann_error));
             copy_nonoverlapping(output, result.as_mut_ptr(), num_output);
             result.set_len(num_output);
         }
@@ -684,40 +768,40 @@ impl Fann {
 
     /// Get the number of input neurons.
     pub fn get_num_input(&self) -> c_uint {
-        unsafe { fann_sys::fann_get_num_input(self.raw) }
+        unsafe { fann_get_num_input(self.raw) }
     }
 
     /// Get the number of output neurons.
     pub fn get_num_output(&self) -> c_uint {
-        unsafe { fann_sys::fann_get_num_output(self.raw) }
+        unsafe { fann_get_num_output(self.raw) }
     }
 
     /// Get the total number of neurons, including the bias neurons.
     ///
     /// E. g. a 2-4-2 network has 3 + 5 + 2 = 10 neurons (because two layers have bias neurons).
     pub fn get_total_neurons(&self) -> c_uint {
-        unsafe { fann_sys::fann_get_total_neurons(self.raw) }
+        unsafe { fann_get_total_neurons(self.raw) }
     }
 
     /// Get the total number of connections.
     pub fn get_total_connections(&self) -> c_uint {
-        unsafe { fann_sys::fann_get_total_connections(self.raw) }
+        unsafe { fann_get_total_connections(self.raw) }
     }
 
     /// Get the type of the neural network.
     pub fn get_network_type(&self) -> NetType {
-        let nt_enum = unsafe { fann_sys::fann_get_network_type(self.raw) };
+        let nt_enum = unsafe { fann_get_network_type(self.raw) };
         NetType::from_nettype_enum(nt_enum)
     }
 
     /// Get the connection rate used when the network was created.
     pub fn get_connection_rate(&self) -> c_float {
-        unsafe { fann_sys::fann_get_connection_rate(self.raw) }
+        unsafe { fann_get_connection_rate(self.raw) }
     }
 
     /// Get the number of layers in the network.
     pub fn get_num_layers(&self) -> c_uint {
-        unsafe { fann_sys::fann_get_num_layers(self.raw) }
+        unsafe { fann_get_num_layers(self.raw) }
     }
 
     /// Get the number of neurons in each layer of the network.
@@ -725,7 +809,7 @@ impl Fann {
         let num_layers = self.get_num_layers() as usize;
         let mut result = Vec::with_capacity(num_layers);
         unsafe {
-            fann_sys::fann_get_layer_array(self.raw, result.as_mut_ptr());
+            fann_get_layer_array(self.raw, result.as_mut_ptr());
             result.set_len(num_layers);
         }
         result
@@ -736,7 +820,7 @@ impl Fann {
         let num_layers = self.get_num_layers() as usize;
         let mut result = Vec::with_capacity(num_layers);
         unsafe {
-            fann_sys::fann_get_bias_array(self.raw, result.as_mut_ptr());
+            fann_get_bias_array(self.raw, result.as_mut_ptr());
             result.set_len(num_layers);
         }
         result
@@ -747,7 +831,7 @@ impl Fann {
         let total = self.get_total_connections() as usize;
         let mut result = Vec::with_capacity(total);
         unsafe {
-            fann_sys::fann_get_connection_array(self.raw, result.as_mut_ptr());
+            fann_get_connection_array(self.raw, result.as_mut_ptr());
             result.set_len(total);
         }
         result
@@ -764,15 +848,15 @@ impl Fann {
 
     /// Set the weight of the given connection.
     pub fn set_weight(&mut self, from_neuron: c_uint, to_neuron: c_uint, weight: fann_type) {
-        unsafe { fann_sys::fann_set_weight(self.raw, from_neuron, to_neuron, weight) }
+        unsafe { fann_set_weight(self.raw, from_neuron, to_neuron, weight) }
     }
 
     /// Get the activation function for neuron number `neuron` in layer number `layer`, counting
     /// the input layer as number 0. Input layer neurons do not have an activation function, so
     /// `layer` must be at least 1.
     pub fn get_activation_func(&self, layer: c_int, neuron: c_int) -> FannResult<ActivationFunc> {
-        let af_enum = unsafe { fann_sys::fann_get_activation_function(self.raw, layer, neuron) };
-        unsafe { try!(FannError::check_no_error(self.raw as *mut fann_sys::fann_error)) };
+        let af_enum = unsafe { fann_get_activation_function(self.raw, layer, neuron) };
+        unsafe { try!(FannError::check_no_error(self.raw as *mut fann_error)) };
         ActivationFunc::from_fann_activationfunc_enum(af_enum)
     }
 
@@ -781,14 +865,14 @@ impl Fann {
     /// `layer` must be at least 1.
     pub fn set_activation_func(&mut self, af: ActivationFunc, layer: c_int, neuron: c_int) {
         let af_enum = af.to_fann_activationfunc_enum();
-        unsafe { fann_sys::fann_set_activation_function(self.raw, af_enum, layer, neuron) }
+        unsafe { fann_set_activation_function(self.raw, af_enum, layer, neuron) }
     }
 
     /// Set the activation function for all hidden layers.
     pub fn set_activation_func_hidden(&mut self, activation_func: ActivationFunc) {
         unsafe {
             let af_enum = activation_func.to_fann_activationfunc_enum();
-            fann_sys::fann_set_activation_function_hidden(self.raw, af_enum);
+            fann_set_activation_function_hidden(self.raw, af_enum);
         }
     }
 
@@ -796,13 +880,13 @@ impl Fann {
     pub fn set_activation_func_output(&mut self, activation_func: ActivationFunc) {
         unsafe {
             let af_enum = activation_func.to_fann_activationfunc_enum();
-            fann_sys::fann_set_activation_function_output(self.raw, af_enum)
+            fann_set_activation_function_output(self.raw, af_enum)
         }
     }
 
     /// Get the activation steepness for neuron number `neuron` in layer number `layer`.
     pub fn get_activation_steepness(&self, layer: c_int, neuron: c_int) -> Option<fann_type> {
-        let steepness = unsafe { fann_sys::fann_get_activation_steepness(self.raw, layer, neuron) };
+        let steepness = unsafe { fann_get_activation_steepness(self.raw, layer, neuron) };
         match steepness {
             -1.0 => None,
             s    => Some(s),
@@ -821,27 +905,27 @@ impl Fann {
     ///
     /// The default value is 0.5.
     pub fn set_activation_steepness(&self, steepness: fann_type, layer: c_int, neuron: c_int) {
-        unsafe { fann_sys::fann_set_activation_steepness(self.raw, steepness, layer, neuron) }
+        unsafe { fann_set_activation_steepness(self.raw, steepness, layer, neuron) }
     }
 
     /// Set the activation steepness for layer number `layer`.
     pub fn set_activation_steepness_layer(&self, steepness: fann_type, layer: c_int) {
-        unsafe { fann_sys::fann_set_activation_steepness_layer(self.raw, steepness, layer) }
+        unsafe { fann_set_activation_steepness_layer(self.raw, steepness, layer) }
     }
 
     /// Set the activation steepness for all hidden layers.
     pub fn set_activation_steepness_hidden(&self, steepness: fann_type) {
-        unsafe { fann_sys::fann_set_activation_steepness_hidden(self.raw, steepness) }
+        unsafe { fann_set_activation_steepness_hidden(self.raw, steepness) }
     }
 
     /// Set the activation steepness for the output layer.
     pub fn set_activation_steepness_output(&self, steepness: fann_type) {
-        unsafe { fann_sys::fann_set_activation_steepness_output(self.raw, steepness) }
+        unsafe { fann_set_activation_steepness_output(self.raw, steepness) }
     }
 
     /// Get the error function used during training.
     pub fn get_error_func(&self) -> ErrorFunc {
-        let ef_enum = unsafe { fann_sys::fann_get_train_error_function(self.raw) };
+        let ef_enum = unsafe { fann_get_train_error_function(self.raw) };
         ErrorFunc::from_errorfunc_enum(ef_enum)
     }
 
@@ -850,12 +934,12 @@ impl Fann {
     /// The default is `Tanh`.
     pub fn set_error_func(&mut self, ef: ErrorFunc) {
         let ef_enum = ef.to_errorfunc_enum();
-        unsafe { fann_sys::fann_set_train_error_function(self.raw, ef_enum) }
+        unsafe { fann_set_train_error_function(self.raw, ef_enum) }
     }
 
     /// Get the stop criterion for training.
     pub fn get_stop_func(&self) -> StopFunc {
-        let sf_enum = unsafe { fann_sys::fann_get_train_stop_function(self.raw) };
+        let sf_enum = unsafe { fann_get_train_stop_function(self.raw) };
         StopFunc::from_stopfunc_enum(sf_enum)
     }
 
@@ -864,12 +948,12 @@ impl Fann {
     /// The default is `Mse`.
     pub fn set_stop_func(&mut self, sf: StopFunc) {
         let sf_enum = sf.to_stopfunc_enum();
-        unsafe { fann_sys::fann_set_train_stop_function(self.raw, sf_enum) }
+        unsafe { fann_set_train_stop_function(self.raw, sf_enum) }
     }
 
     /// Get the bit fail limit.
     pub fn get_bit_fail_limit(&self) -> fann_type {
-        unsafe { fann_sys::fann_get_bit_fail_limit(self.raw) }
+        unsafe { fann_get_bit_fail_limit(self.raw) }
     }
 
     /// Set the bit fail limit.
@@ -877,30 +961,84 @@ impl Fann {
     /// Each output neuron value that differs from the desired output by more than the bit fail
     /// limit is counted as a failed bit.
     pub fn set_bit_fail_limit(&mut self, bit_fail_limit: fann_type) {
-        unsafe { fann_sys::fann_set_bit_fail_limit(self.raw, bit_fail_limit) }
+        unsafe { fann_set_bit_fail_limit(self.raw, bit_fail_limit) }
     }
 
     // TODO: cascadetrain methods
 
+    /// Get cascade training parameters.
+    pub fn get_cascade_params(&self) -> CascadeParams {
+        unsafe {
+            let num_af = fann_get_cascade_activation_functions_count(self.raw) as usize;
+            let af_enum_ptr = fann_get_cascade_activation_functions(self.raw);
+            let af_enums = Vec::from_raw_parts(af_enum_ptr, num_af, num_af);
+            let activation_functions = af_enums.iter().map(|&af_enum|
+                ActivationFunc::from_fann_activationfunc_enum(af_enum).unwrap()).collect();
+            forget(af_enums);
+            let num_st = fann_get_cascade_activation_steepnesses_count(self.raw) as usize;
+            let mut activation_steepnesses = Vec::with_capacity(num_st);
+            let st_ptr = fann_get_cascade_activation_steepnesses(self.raw);
+            copy_nonoverlapping(st_ptr, activation_steepnesses.as_mut_ptr(), num_st);
+            activation_steepnesses.set_len(num_st);
+            CascadeParams {
+                output_change_fraction: fann_get_cascade_output_change_fraction(self.raw),
+                output_stagnation_epochs: fann_get_cascade_output_stagnation_epochs(self.raw),
+                candidate_change_fraction: fann_get_cascade_candidate_change_fraction(self.raw),
+                candidate_stagnation_epochs: fann_get_cascade_candidate_stagnation_epochs(self.raw),
+                candidate_limit: fann_get_cascade_candidate_limit(self.raw),
+                weight_multiplier: fann_get_cascade_weight_multiplier(self.raw),
+                max_out_epochs: fann_get_cascade_max_out_epochs(self.raw),
+                max_cand_epochs: fann_get_cascade_max_cand_epochs(self.raw),
+                activation_functions: activation_functions,
+                activation_steepnesses: activation_steepnesses,
+                num_candidate_groups: fann_get_cascade_num_candidate_groups(self.raw),
+            }
+        }
+    }
+
+    /// Set cascade training parameters.
+    pub fn set_cascade_params(&mut self, params: &CascadeParams) {
+        let af_enums: Vec<_> = params.activation_functions.iter().map(|af|
+            af.to_fann_activationfunc_enum()).collect();
+        unsafe {
+            fann_set_cascade_output_change_fraction(self.raw, params.output_change_fraction);
+            fann_set_cascade_output_stagnation_epochs(self.raw, params.output_stagnation_epochs);
+            fann_set_cascade_candidate_change_fraction(self.raw, params.candidate_change_fraction);
+            fann_set_cascade_candidate_stagnation_epochs(self.raw,
+                                                         params.candidate_stagnation_epochs);
+            fann_set_cascade_candidate_limit(self.raw, params.candidate_limit);
+            fann_set_cascade_weight_multiplier(self.raw, params.weight_multiplier);
+            fann_set_cascade_max_out_epochs(self.raw, params.max_out_epochs);
+            fann_set_cascade_max_cand_epochs(self.raw, params.max_cand_epochs);
+            fann_set_cascade_activation_functions(self.raw,
+                                                  af_enums.as_ptr(),
+                                                  af_enums.len() as c_uint);
+            fann_set_cascade_activation_steepnesses(self.raw,
+                                                    params.activation_steepnesses.as_ptr(),
+                                                    params.activation_steepnesses.len() as c_uint);
+            fann_set_cascade_num_candidate_groups(self.raw, params.num_candidate_groups);
+        }
+    }
+
     /// Get the currently configured training algorithm.
     pub fn get_train_algorithm(&self) -> TrainAlgorithm {
-        let ft_enum = unsafe { fann_sys::fann_get_training_algorithm(self.raw) };
+        let ft_enum = unsafe { fann_get_training_algorithm(self.raw) };
         match ft_enum {
             FANN_TRAIN_INCREMENTAL => TrainAlgorithm::Incremental,
             FANN_TRAIN_BATCH       => TrainAlgorithm::Batch,
             FANN_TRAIN_RPROP       => unsafe {
                 TrainAlgorithm::Rprop {
-                    decrease_factor: fann_sys::fann_get_rprop_decrease_factor(self.raw),
-                    increase_factor: fann_sys::fann_get_rprop_increase_factor(self.raw),
-                    delta_min: fann_sys::fann_get_rprop_delta_min(self.raw),
-                    delta_max: fann_sys::fann_get_rprop_delta_max(self.raw),
-                    delta_zero: fann_sys::fann_get_rprop_delta_zero(self.raw),
+                    decrease_factor: fann_get_rprop_decrease_factor(self.raw),
+                    increase_factor: fann_get_rprop_increase_factor(self.raw),
+                    delta_min: fann_get_rprop_delta_min(self.raw),
+                    delta_max: fann_get_rprop_delta_max(self.raw),
+                    delta_zero: fann_get_rprop_delta_zero(self.raw),
                 }
             },
             FANN_TRAIN_QUICKPROP   => unsafe {
                 TrainAlgorithm::Quickprop {
-                    decay: fann_sys::fann_get_quickprop_decay(self.raw),
-                    mu: fann_sys::fann_get_quickprop_mu(self.raw),
+                    decay: fann_get_quickprop_decay(self.raw),
+                    mu: fann_get_quickprop_mu(self.raw),
                 }
             },
         }
@@ -910,25 +1048,25 @@ impl Fann {
     pub fn set_train_algorithm(&mut self, ta: TrainAlgorithm) {
         match ta {
             TrainAlgorithm::Incremental => unsafe {
-                fann_sys::fann_set_training_algorithm(self.raw, FANN_TRAIN_INCREMENTAL);
+                fann_set_training_algorithm(self.raw, FANN_TRAIN_INCREMENTAL);
             },
             TrainAlgorithm::Batch => unsafe {
-                fann_sys::fann_set_training_algorithm(self.raw, FANN_TRAIN_BATCH);
+                fann_set_training_algorithm(self.raw, FANN_TRAIN_BATCH);
             },
             TrainAlgorithm::Rprop {
                 decrease_factor, increase_factor, delta_min, delta_max, delta_zero
             } => unsafe {
-                fann_sys::fann_set_training_algorithm(self.raw, FANN_TRAIN_RPROP);
-                fann_sys::fann_set_rprop_decrease_factor(self.raw, decrease_factor);
-                fann_sys::fann_set_rprop_increase_factor(self.raw, increase_factor);
-                fann_sys::fann_set_rprop_delta_min(self.raw, delta_min);
-                fann_sys::fann_set_rprop_delta_max(self.raw, delta_max);
-                fann_sys::fann_set_rprop_delta_zero(self.raw, delta_zero);
+                fann_set_training_algorithm(self.raw, FANN_TRAIN_RPROP);
+                fann_set_rprop_decrease_factor(self.raw, decrease_factor);
+                fann_set_rprop_increase_factor(self.raw, increase_factor);
+                fann_set_rprop_delta_min(self.raw, delta_min);
+                fann_set_rprop_delta_max(self.raw, delta_max);
+                fann_set_rprop_delta_zero(self.raw, delta_zero);
             },
             TrainAlgorithm::Quickprop { decay, mu } => unsafe {
-                fann_sys::fann_set_training_algorithm(self.raw, FANN_TRAIN_QUICKPROP);
-                fann_sys::fann_set_quickprop_decay(self.raw, decay);
-                fann_sys::fann_set_quickprop_mu(self.raw, mu);
+                fann_set_training_algorithm(self.raw, FANN_TRAIN_QUICKPROP);
+                fann_set_quickprop_decay(self.raw, decay);
+                fann_set_quickprop_mu(self.raw, mu);
             },
         }
     }
@@ -936,25 +1074,25 @@ impl Fann {
     /// Get the learning rate, which is used to determine how aggressive training should be (not
     /// used by the RPROP algorithm). The default is 0.7.
     pub fn get_learning_rate(&self) -> c_float {
-        unsafe { fann_sys::fann_get_learning_rate(self.raw) }
+        unsafe { fann_get_learning_rate(self.raw) }
     }
 
     /// Set the learning rate, which is used to determine how aggressive training should be (not
     /// used by the RPROP algorithm). The default is 0.7.
     pub fn set_learning_rate(&mut self, learning_rate: c_float) {
-        unsafe { fann_sys::fann_set_learning_rate(self.raw, learning_rate) }
+        unsafe { fann_set_learning_rate(self.raw, learning_rate) }
     }
 
     /// Get the learning momentum used in incremental training. It is recommended to use a value
     /// between 0.0 and 1.0. The default is 1.0.
     pub fn get_learning_momentum(&self) -> c_float {
-        unsafe { fann_sys::fann_get_learning_momentum(self.raw) }
+        unsafe { fann_get_learning_momentum(self.raw) }
     }
 
     /// Set the learning momentum used in incremental training. It is recommended to use a value
     /// between 0.0 and 1.0. The default is 1.0.
     pub fn set_learning_momentum(&mut self, learning_momentum: c_float) {
-        unsafe { fann_sys::fann_set_learning_momentum(self.raw, learning_momentum) }
+        unsafe { fann_set_learning_momentum(self.raw, learning_momentum) }
     }
 
     // TODO: save_to_fixed?
@@ -963,7 +1101,7 @@ impl Fann {
 
 impl Drop for Fann {
     fn drop(&mut self) {
-        unsafe { fann_sys::fann_destroy(self.raw); }
+        unsafe { fann_destroy(self.raw); }
     }
 }
 
@@ -1026,6 +1164,12 @@ mod tests {
         let connection = Connection { from_neuron: 1, to_neuron: 2, weight: 0.123 };
         fann.set_connections(&[connection]);
         assert_eq!(2, fann.get_total_connections()); // 2 because of the bias neuron in layer 0.
-        // TODO (with fann-sys 0.1.2): assert_eq!(connection, fann.get_connections()[1]);
+        assert_eq!(connection, fann.get_connections()[1]);
+    }
+
+    #[test]
+    fn test_cascade_params() {
+        let fann = Fann::new(&[1, 1]).unwrap();
+        assert_eq!(CascadeParams::default(), fann.get_cascade_params());
     }
 }
