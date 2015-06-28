@@ -1135,6 +1135,124 @@ impl Fann {
         unsafe { fann_set_learning_momentum(self.raw, learning_momentum) }
     }
 
+    /// Calculate input scaling parameters for future use based on the given training data.
+    pub fn set_input_scaling_params(&mut self,
+                                    data: &TrainData,
+                                    new_input_min: c_float,
+                                    new_input_max: c_float) -> FannResult<()> {
+        unsafe {
+            let result = fann_set_input_scaling_params(self.raw,
+                                                       data.get_raw(),
+                                                       new_input_min,
+                                                       new_input_max);
+            try!(FannError::check_no_error(self.raw as *mut fann_error));
+            match result {
+                0 => Ok(()),
+                _ => Err(FannError {
+                         error_type: FannErrorType::ScaleNotPresent,
+                         error_str: "Error calculating scaling parameters".to_string(),
+                     }),
+            }
+        }
+    }
+
+    /// Calculate output scaling parameters for future use based on the given training data.
+    pub fn set_output_scaling_params(&mut self,
+                                    data: &TrainData,
+                                    new_output_min: c_float,
+                                    new_output_max: c_float) -> FannResult<()> {
+        unsafe {
+            let result = fann_set_output_scaling_params(self.raw,
+                                                       data.get_raw(),
+                                                       new_output_min,
+                                                       new_output_max);
+            try!(FannError::check_no_error(self.raw as *mut fann_error));
+            match result {
+                0 => Ok(()),
+                _ => Err(FannError {
+                         error_type: FannErrorType::ScaleNotPresent,
+                         error_str: "Error calculating scaling parameters".to_string(),
+                     }),
+            }
+        }
+    }
+
+    /// Calculate scaling parameters for future use based on the given training data.
+    pub fn set_scaling_params(&mut self,
+                                    data: &TrainData,
+                                    new_input_min: c_float,
+                                    new_input_max: c_float,
+                                    new_output_min: c_float,
+                                    new_output_max: c_float) -> FannResult<()> {
+        unsafe {
+            let result = fann_set_scaling_params(self.raw,
+                                                       data.get_raw(),
+                                                       new_input_min,
+                                                       new_input_max,
+                                                       new_output_min,
+                                                       new_output_max);
+            try!(FannError::check_no_error(self.raw as *mut fann_error));
+            match result {
+                0 => Ok(()),
+                _ => Err(FannError {
+                         error_type: FannErrorType::ScaleNotPresent,
+                         error_str: "Error calculating scaling parameters".to_string(),
+                     }),
+            }
+        }
+    }
+
+    /// Clear scaling parameters.
+    pub fn clear_scaling_params(&mut self) -> FannResult<()> {
+        unsafe {
+            let result = fann_clear_scaling_params(self.raw);
+            try!(FannError::check_no_error(self.raw as *mut fann_error));
+            match result {
+                0 => Ok(()),
+                _ => Err(FannError {
+                         error_type: FannErrorType::ScaleNotPresent,
+                         error_str: "Error clearing scaling parameters".to_string(),
+                     }),
+            }
+        }
+    }
+
+    /// Scale data in input vector before feeding it to the network, based on previously calculated
+    /// parameters.
+    pub fn scale_input(&self, input: &mut [fann_type]) -> FannResult<()> {
+        unsafe {
+            fann_scale_input(self.raw, input.as_mut_ptr());
+            FannError::check_no_error(self.raw as *mut fann_error)
+        }
+    }
+
+    /// Scale data in output vector before feeding it to the network, based on previously calculated
+    /// parameters.
+    pub fn scale_output(&self, output: &mut [fann_type]) -> FannResult<()> {
+        unsafe {
+            fann_scale_output(self.raw, output.as_mut_ptr());
+            FannError::check_no_error(self.raw as *mut fann_error)
+        }
+    }
+
+    /// Descale data in input vector after feeding it to the network, based on previously calculated
+    /// parameters.
+    pub fn descale_input(&self, input: &mut [fann_type]) -> FannResult<()> {
+        unsafe {
+            fann_descale_input(self.raw, input.as_mut_ptr());
+            FannError::check_no_error(self.raw as *mut fann_error)
+        }
+    }
+
+    /// Descale data in output vector after getting it from the network, based on previously
+    /// calculated parameters.
+    pub fn descale_output(&self, output: &mut [fann_type]) -> FannResult<()> {
+        unsafe {
+            fann_descale_output(self.raw, output.as_mut_ptr());
+            FannError::check_no_error(self.raw as *mut fann_error)
+        }
+    }
+
     // TODO: save_to_fixed?
     // TODO: user_data methods?
 }

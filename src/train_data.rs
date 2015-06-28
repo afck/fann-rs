@@ -4,7 +4,7 @@ use error::{FannError, FannErrorType, FannResult};
 use fann_sys::*;
 use libc::c_uint;
 use std::path::Path;
-use super::to_filename;
+use super::{Fann, to_filename};
 
 pub struct TrainData {
     raw: *mut fann_train_data,
@@ -86,7 +86,26 @@ impl TrainData {
     }
 
     // TODO: from_callback
-    // TODO: scale methods
+
+    /// Scale input and output in the training data using the parameters previously calculated for
+    /// the given network.
+    pub fn scale_for(&mut self, fann: &Fann) -> FannResult<()> {
+        unsafe {
+            fann_scale_train(fann.raw, self.raw);
+            try!(FannError::check_no_error(fann.raw as *mut fann_error));
+            FannError::check_no_error(self.raw as *mut fann_error)
+        }
+    }
+
+    /// Descale input and output in the training data using the parameters previously calculated for
+    /// the given network.
+    pub fn descale_for(&mut self, fann: &Fann) -> FannResult<()> {
+        unsafe {
+            fann_descale_train(fann.raw, self.raw);
+            try!(FannError::check_no_error(fann.raw as *mut fann_error));
+            FannError::check_no_error(self.raw as *mut fann_error)
+        }
+    }
 
     /// Scales the inputs in the training data to the specified range.
     pub fn scale_input(&mut self, new_min: fann_type, new_max: fann_type) -> FannResult<()> {
