@@ -18,6 +18,8 @@ pub use train_data::TrainData;
 mod error;
 mod train_data;
 
+pub type Connection = fann_sys::fann_connection;
+
 /// Convert a path to a `CString`.
 fn to_filename<P: AsRef<Path>>(path: P) -> Result<CString, FannError> {
     match path.as_ref().to_str().map(|s| CString::new(s)) {
@@ -734,8 +736,25 @@ impl Fann {
         result
     }
 
-    // TODO: get_connection_array (connection_vec?)
-    // TODO: set_weight_array?
+    /// Get a list of all connections in the network.
+    pub fn get_connections(&self) -> Vec<Connection> {
+        let total = self.get_total_connections() as usize;
+        let mut result = Vec::with_capacity(total);
+        unsafe {
+            fann_sys::fann_get_connection_array(self.raw, result.as_mut_ptr());
+            result.set_len(total);
+        }
+        result
+    }
+
+    /// Set the weights of all given connections.
+    ///
+    /// Connections that don't already exist are ignored.
+    pub fn set_connections<'a, I: IntoIterator<Item = &'a Connection>>(&mut self, connections: I) {
+        for c in connections {
+            self.set_weight(c.from_neuron, c.to_neuron, c.weight);
+        }
+    }
 
     /// Set the weight of the given connection.
     pub fn set_weight(&mut self, from_neuron: c_uint, to_neuron: c_uint, weight: fann_type) {
@@ -993,5 +1012,14 @@ mod tests {
         let fann = Fann::new(&[4, 3, 3, 1]).unwrap();
         assert_eq!(vec!(4, 3, 3, 1), fann.get_layer_sizes());
         assert_eq!(vec!(1, 1, 1, 0), fann.get_bias_counts());
+    }
+
+    #[test]
+    fn test_get_set_connections() {
+        let mut fann = Fann::new(&[1, 1]).unwrap();
+        let connection = Connection { from_neuron: 1, to_neuron: 2, weight: 0.123 };
+        fann.set_connections(&[connection]);
+        assert_eq!(2, fann.get_total_connections()); // 2 because of the bias neuron in layer 0.
+        // TODO (with fann-sys 0.1.2): assert_eq!(connection, fann.get_connections()[1]);
     }
 }
