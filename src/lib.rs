@@ -554,14 +554,7 @@ impl Fann {
         let filename = try!(to_filename(path));
         unsafe {
             let result = fann_save(self.raw, filename.as_ptr());
-            try!(FannError::check_no_error(self.raw as *mut fann_error));
-            match result {
-                0 => Ok(()),
-                _ => Err(FannError {
-                         error_type: FannErrorType::CantSaveFile,
-                         error_str: "Error saving network".to_string(),
-                     }),
-            }
+            FannError::check_zero(result, self.raw as *mut fann_error, "Error saving network")
         }
     }
 
@@ -1145,14 +1138,8 @@ impl Fann {
                                                        data.get_raw(),
                                                        new_input_min,
                                                        new_input_max);
-            try!(FannError::check_no_error(self.raw as *mut fann_error));
-            match result {
-                0 => Ok(()),
-                _ => Err(FannError {
-                         error_type: FannErrorType::ScaleNotPresent,
-                         error_str: "Error calculating scaling parameters".to_string(),
-                     }),
-            }
+            FannError::check_zero(result, self.raw as *mut fann_error,
+                                  "Error calculating scaling parameters")
         }
     }
 
@@ -1166,14 +1153,8 @@ impl Fann {
                                                        data.get_raw(),
                                                        new_output_min,
                                                        new_output_max);
-            try!(FannError::check_no_error(self.raw as *mut fann_error));
-            match result {
-                0 => Ok(()),
-                _ => Err(FannError {
-                         error_type: FannErrorType::ScaleNotPresent,
-                         error_str: "Error calculating scaling parameters".to_string(),
-                     }),
-            }
+            FannError::check_zero(result, self.raw as *mut fann_error,
+                                  "Error calculating scaling parameters")
         }
     }
 
@@ -1191,29 +1172,17 @@ impl Fann {
                                                        new_input_max,
                                                        new_output_min,
                                                        new_output_max);
-            try!(FannError::check_no_error(self.raw as *mut fann_error));
-            match result {
-                0 => Ok(()),
-                _ => Err(FannError {
-                         error_type: FannErrorType::ScaleNotPresent,
-                         error_str: "Error calculating scaling parameters".to_string(),
-                     }),
-            }
+            FannError::check_zero(result, self.raw as *mut fann_error,
+                                  "Error calculating scaling parameters")
         }
     }
 
     /// Clear scaling parameters.
     pub fn clear_scaling_params(&mut self) -> FannResult<()> {
         unsafe {
-            let result = fann_clear_scaling_params(self.raw);
-            try!(FannError::check_no_error(self.raw as *mut fann_error));
-            match result {
-                0 => Ok(()),
-                _ => Err(FannError {
-                         error_type: FannErrorType::ScaleNotPresent,
-                         error_str: "Error clearing scaling parameters".to_string(),
-                     }),
-            }
+            FannError::check_zero(fann_clear_scaling_params(self.raw),
+                                  self.raw as *mut fann_error,
+                                  "Error clearing scaling parameters")
         }
     }
 

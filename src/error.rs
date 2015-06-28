@@ -1,5 +1,6 @@
 use fann_sys::{fann_error, fann_get_errno, fann_get_errstr};
 use fann_sys::fann_errno_enum::*;
+use libc::c_int;
 use self::FannErrorType::*;
 use std::error::Error;
 use std::fmt;
@@ -46,6 +47,8 @@ pub enum FannErrorType {
     // Errors specific to the Rust wrapper:
     /// Failed to save file
     CantSaveFile,
+    /// C function returned an error code, i. e. not 0, but did not specify error
+    ErrorCodeReturned,
 }
 
 impl fmt::Display for FannErrorType {
@@ -70,6 +73,7 @@ impl fmt::Display for FannErrorType {
             IndexOutOfBound     => "Index is out of bound",
             ScaleNotPresent     => "Scaling parameters not present",
             CantSaveFile        => "Failed saving file",
+            ErrorCodeReturned   => "C function returned an error code but did not specify error",
         }, f)
     }
 }
@@ -99,7 +103,7 @@ impl Error for FannError {
 impl FannError {
     /// Returns an `Err` if the previous operation on `errdat` has resulted in an error, otherwise
     /// `Ok(())`.
-    pub unsafe fn check_no_error(errdat: *mut fann_error) -> Result<(), FannError> {
+    pub unsafe fn check_no_error(errdat: *mut fann_error) -> FannResult<()> {
         if errdat.is_null() {
             return Err(FannError {
                 error_type: FannErrorType::CantAllocateMem,
@@ -128,12 +132,24 @@ impl FannError {
             FANN_E_SCALE_NOT_PRESENT     => ScaleNotPresent,
         };
         let errstr_bytes = CStr::from_ptr(fann_get_errstr(errdat)).to_bytes().to_vec();
-        let error_str = String::from_utf8(errstr_bytes)
-            .unwrap_or("Invalid UTF-8 in error string".to_string());
+        let error_str_opt = String::from_utf8(errstr_bytes);
         Err(FannError {
             error_type: error_type,
-            error_str: error_str,
+            error_str: error_str_opt.unwrap_or("Invalid UTF-8 in error string".to_string()),
         })
+    }
+
+    pub unsafe fn check_zero(result: c_int,
+                             errdat: *mut fann_error,
+                             error_str: &str) -> FannResult<()> {
+        try!(FannError::check_no_error(errdat));
+        match result {
+            0 => Ok(()),
+            _ => Err(FannError {
+                     error_type: FannErrorType::ErrorCodeReturned,
+                     error_str: error_str.to_string(),
+                 }),
+        }
     }
 }
 
