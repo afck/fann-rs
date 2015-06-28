@@ -104,6 +104,12 @@ impl TrainAlgorithm {
     }
 }
 
+impl Default for TrainAlgorithm {
+    fn default() -> TrainAlgorithm {
+        TrainAlgorithm::default_rprop()
+    }
+}
+
 /// The activation functions used for the neurons during training. They can either be set for a
 /// group of neurons using `set_activation_func_hidden` and `set_activation_func_output`, or for a
 /// single neuron using `set_activation_func`.
@@ -998,7 +1004,7 @@ mod tests {
     #[test]
     fn test_train_algorithm() {
         let mut fann = Fann::new(&[4, 3, 3, 1]).unwrap();
-        assert_eq!(TrainAlgorithm::default_rprop(), fann.get_train_algorithm());
+        assert_eq!(TrainAlgorithm::default(), fann.get_train_algorithm());
         let quickprop = TrainAlgorithm::Quickprop {
             decay: -0.0002,
             mu: 1.5,
