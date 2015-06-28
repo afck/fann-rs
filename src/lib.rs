@@ -964,7 +964,47 @@ impl Fann {
         unsafe { fann_set_bit_fail_limit(self.raw, bit_fail_limit) }
     }
 
-    // TODO: cascadetrain methods
+    /// Train the network on the given data set, using the Cascade2 algorithm: This adds neurons to
+    /// the neural network while training, starting with an ANN without any hidden layers. The
+    /// network should use shortcut connections, so it needs to be created like this:
+    ///
+    /// ```
+    /// let td = fann::TrainData::from_file("test_files/xor.data").unwrap();
+    /// let fann = fann::Fann::new_shortcut(&[td.num_input(), td.num_output()]).unwrap();
+    /// ```
+    ///
+    /// # Arguments
+    ///
+    /// * `data`                    - The training data.
+    /// * `max_neurons`             - The maximum number of neurons to be added to the ANN.
+    /// * `neurons_between_reports` - The number of neurons between printing a status report to
+    ///                               `stdout`, or `0` to print no reports.
+    /// * `desired_error`           - The desired maximum value of `get_mse` or `get_bit_fail`,
+    ///                               depending on which stop function was selected.
+    pub fn cascadetrain_on_data(&mut self,
+                         data: &TrainData,
+                         max_neurons: c_uint,
+                         neurons_between_reports: c_uint,
+                         desired_error: c_float) -> FannResult<()> {
+        unsafe {
+            fann_cascadetrain_on_data(self.raw,
+                                      data.get_raw(),
+                                      max_neurons,
+                                      neurons_between_reports,
+                                      desired_error);
+            FannError::check_no_error(self.raw as *mut fann_error)
+        }
+    }
+
+    /// Do the same as `cascadetrain_on_data` but read the training data directly from a file.
+    pub fn cascadetrain_on_file<P: AsRef<Path>>(&mut self,
+                                         path: P,
+                                         max_neurons: c_uint,
+                                         neurons_between_reports: c_uint,
+                                         desired_error: c_float) -> FannResult<()> {
+        let train = try!(TrainData::from_file(path));
+        self.cascadetrain_on_data(&train, max_neurons, neurons_between_reports, desired_error)
+    }
 
     /// Get cascade training parameters.
     pub fn get_cascade_params(&self) -> CascadeParams {
