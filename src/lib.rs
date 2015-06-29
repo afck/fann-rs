@@ -41,13 +41,22 @@ pub enum TrainAlgorithm {
     /// Standard backpropagation algorithm, where the weights are updated after each training
     /// pattern. This means that the weights are updated many times during a single epoch and some
     /// problems will train very fast, while other more advanced problems will not train very well.
-    Incremental,
+    Incremental {
+        /// A higher momentum can be used to speed up incremental training. It should be between 0
+        /// and 1, the default is 0.
+        learning_momentum: c_float,
+        /// The learning rate determines how aggressive training should be. Default is 0.7.
+        learning_rate: c_float,
+    },
     /// Standard backpropagation algorithm, where the weights are updated after calculating the mean
     /// square error for the whole training set. This means that the weights are only updated once
     /// during an epoch. For this reason some problems will train slower with this algorithm. But
     /// since the mean square error is calculated more correctly than in incremental training, some
     /// problems will reach better solutions.
-    Batch,
+    Batch {
+        /// The learning rate determines how aggressive training should be. Default is 0.7.
+        learning_rate: c_float,
+    },
     /// A more advanced batch training algorithm which achieves good results for many problems.
     /// `Rprop` is adaptive and therefore does not use the `learning_rate`. Some other parameters
     /// can, however, be set to change the way `Rprop` works, but it is only recommended for users
@@ -78,10 +87,28 @@ pub enum TrainAlgorithm {
         /// The mu factor is used to increase or decrease the step size; should always be greater
         /// than 1. The default is 1.75.
         mu: c_float,
+        /// The learning rate determines how aggressive training should be. Default is 0.7.
+        learning_rate: c_float,
     },
 }
 
 impl TrainAlgorithm {
+    /// The `Incremental` algorithm with default parameters.
+    pub fn default_incremental() -> TrainAlgorithm {
+        TrainAlgorithm::Incremental {
+            learning_momentum: 0.0,
+            learning_rate: 0.7,
+        }
+    }
+
+    /// The `Batch` algorithm with default parameters.
+    pub fn default_batch() -> TrainAlgorithm {
+        TrainAlgorithm::Batch {
+            learning_rate: 0.7,
+        }
+    }
+
+    /// The `Rprop` algorithm with default parameters.
     pub fn default_rprop() -> TrainAlgorithm {
         TrainAlgorithm::Rprop {
             decrease_factor: 0.5,
@@ -91,11 +118,13 @@ impl TrainAlgorithm {
             delta_zero: 0.1,
         }
     }
-    
+
+    /// The `Quickprop` algorithm with default parameters.
     pub fn default_quickprop() -> TrainAlgorithm {
         TrainAlgorithm::Quickprop {
             decay: -0.0001,
             mu: 1.75,
+            learning_rate: 0.7,
         }
     }
 }
@@ -1057,8 +1086,17 @@ impl Fann {
     pub fn get_train_algorithm(&self) -> TrainAlgorithm {
         let ft_enum = unsafe { fann_get_training_algorithm(self.raw) };
         match ft_enum {
-            FANN_TRAIN_INCREMENTAL => TrainAlgorithm::Incremental,
-            FANN_TRAIN_BATCH       => TrainAlgorithm::Batch,
+            FANN_TRAIN_INCREMENTAL => unsafe {
+                TrainAlgorithm::Incremental {
+                    learning_momentum: fann_get_learning_momentum(self.raw),
+                    learning_rate: fann_get_learning_rate(self.raw),
+                }
+            },
+            FANN_TRAIN_BATCH       => unsafe {
+                TrainAlgorithm::Batch {
+                    learning_rate: fann_get_learning_rate(self.raw),
+                }
+            },
             FANN_TRAIN_RPROP       => unsafe {
                 TrainAlgorithm::Rprop {
                     decrease_factor: fann_get_rprop_decrease_factor(self.raw),
@@ -1072,6 +1110,7 @@ impl Fann {
                 TrainAlgorithm::Quickprop {
                     decay: fann_get_quickprop_decay(self.raw),
                     mu: fann_get_quickprop_mu(self.raw),
+                    learning_rate: fann_get_learning_rate(self.raw),
                 }
             },
         }
@@ -1080,11 +1119,14 @@ impl Fann {
     /// Set the algorithm to be used for training.
     pub fn set_train_algorithm(&mut self, ta: TrainAlgorithm) {
         match ta {
-            TrainAlgorithm::Incremental => unsafe {
+            TrainAlgorithm::Incremental { learning_momentum, learning_rate } => unsafe {
                 fann_set_training_algorithm(self.raw, FANN_TRAIN_INCREMENTAL);
+                fann_set_learning_momentum(self.raw, learning_momentum);
+                fann_set_learning_rate(self.raw, learning_rate);
             },
-            TrainAlgorithm::Batch => unsafe {
+            TrainAlgorithm::Batch { learning_rate } => unsafe {
                 fann_set_training_algorithm(self.raw, FANN_TRAIN_BATCH);
+                fann_set_learning_rate(self.raw, learning_rate);
             },
             TrainAlgorithm::Rprop {
                 decrease_factor, increase_factor, delta_min, delta_max, delta_zero
@@ -1096,36 +1138,13 @@ impl Fann {
                 fann_set_rprop_delta_max(self.raw, delta_max);
                 fann_set_rprop_delta_zero(self.raw, delta_zero);
             },
-            TrainAlgorithm::Quickprop { decay, mu } => unsafe {
+            TrainAlgorithm::Quickprop { decay, mu, learning_rate } => unsafe {
                 fann_set_training_algorithm(self.raw, FANN_TRAIN_QUICKPROP);
                 fann_set_quickprop_decay(self.raw, decay);
                 fann_set_quickprop_mu(self.raw, mu);
+                fann_set_learning_rate(self.raw, learning_rate);
             },
         }
-    }
-
-    /// Get the learning rate, which is used to determine how aggressive training should be (not
-    /// used by the RPROP algorithm). The default is 0.7.
-    pub fn get_learning_rate(&self) -> c_float {
-        unsafe { fann_get_learning_rate(self.raw) }
-    }
-
-    /// Set the learning rate, which is used to determine how aggressive training should be (not
-    /// used by the RPROP algorithm). The default is 0.7.
-    pub fn set_learning_rate(&mut self, learning_rate: c_float) {
-        unsafe { fann_set_learning_rate(self.raw, learning_rate) }
-    }
-
-    /// Get the learning momentum used in incremental training. It is recommended to use a value
-    /// between 0.0 and 1.0. The default is 1.0.
-    pub fn get_learning_momentum(&self) -> c_float {
-        unsafe { fann_get_learning_momentum(self.raw) }
-    }
-
-    /// Set the learning momentum used in incremental training. It is recommended to use a value
-    /// between 0.0 and 1.0. The default is 1.0.
-    pub fn set_learning_momentum(&mut self, learning_momentum: c_float) {
-        unsafe { fann_set_learning_momentum(self.raw, learning_momentum) }
     }
 
     /// Calculate input scaling parameters for future use based on the given training data.
@@ -1273,6 +1292,7 @@ mod tests {
         let quickprop = TrainAlgorithm::Quickprop {
             decay: -0.0002,
             mu: 1.5,
+            learning_rate: 0.8,
         };
         fann.set_train_algorithm(quickprop);
         assert_eq!(quickprop, fann.get_train_algorithm());
