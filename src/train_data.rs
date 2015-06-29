@@ -34,6 +34,10 @@ impl TrainData {
         }
     }
 
+    // TODO: from_callback. The trick described in
+    // https://aatch.github.io/blog/2015/01/17/unboxed-closures-and-ffi-callbacks/
+    // does not work here because the callback doesn't take a pointer as its first argument.
+
     /// Save the training data to a file.
     pub fn save<P: AsRef<Path>>(&self, path: P) -> FannResult<()> {
         let filename = try!(to_filename(path));
@@ -84,8 +88,6 @@ impl TrainData {
     pub fn num_output(&self) -> c_uint {
         unsafe { fann_num_output_train_data(self.raw) }
     }
-
-    // TODO: from_callback
 
     /// Scale input and output in the training data using the parameters previously calculated for
     /// the given network.
