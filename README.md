@@ -13,18 +13,19 @@ safe interface to FANN on top of the
 
 ## Usage
 
-Add `fann` to the list of dependencies in your `Cargo.toml`:
+Add `fann` and `libc` to the list of dependencies in your `Cargo.toml`:
 
 ```toml
 [dependencies]
-
 fann = "*"
+libc = "*"
 ```
 
 and this to your crate root:
 
 ```rust
 extern crate fann;
+extern crate libc;
 ```
 
 Usage examples are included in the [Documentation](https://afck.github.io/docs/fann-rs/fann).
