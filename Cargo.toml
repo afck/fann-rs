@@ -9,7 +9,7 @@ readme = "README.md"
 description = """
 Wrapper for the Fast Artificial Neural Networks library
 """
-keywords = ["neural", "network", "fann"]
+keywords = ["neural", "network", "fann", "classifier", "backpropagation"]
 
 [dependencies]
 fann-sys = "*"
