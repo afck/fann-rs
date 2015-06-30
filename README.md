@@ -8,6 +8,23 @@
 safe interface to FANN on top of the
 [low-level bindings fann-sys-rs](https://github.com/afck/fann-sys-rs).
 
-It is work in progress and is still missing some functionality.
-
 [Documentation](https://afck.github.io/docs/fann-rs/fann)
+
+
+## Usage
+
+Add `fann` to the list of dependencies in your `Cargo.toml`:
+
+```toml
+[dependencies]
+
+fann = "*"
+```
+
+and this to your crate root:
+
+```rust
+extern crate fann;
+```
+
+Usage examples are included in the [Documentation](https://afck.github.io/docs/fann-rs/fann).
