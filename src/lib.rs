@@ -1,3 +1,79 @@
+//! A Rust wrapper for the Fast Artificial Neural Network library.
+//!
+//! A new neural network with random weights can be created with the `Fann::new` method, or, for
+//! different network topologies, with its variants `Fann::new_sparse` and `Fann::new_shortcut`.
+//! Existing neural networks can be saved to and loaded from files.
+//!
+//! Similarly, training data sets can be loaded from and saved to human-readable files, or training
+//! data can be provided directly to the network as slices of floating point numbers.
+//!
+//! Example:
+//!
+//! ```
+//! extern crate fann;
+//! use fann::{ActivationFunc, Fann, TrainAlgorithm};
+//!
+//! fn main() {
+//!    // Create a new network with two input neurons, a hidden layer with three neurons, and one
+//!    // output neuron.
+//!    let mut fann = Fann::new(&[2, 3, 1]).unwrap();
+//!    // Configure the activation functions for the hidden and output neurons.
+//!    fann.set_activation_func_hidden(ActivationFunc::SigmoidSymmetric);
+//!    fann.set_activation_func_output(ActivationFunc::SigmoidSymmetric);
+//!    // Use the Quickprop learning algorithm, with default parameters.
+//!    // (Otherwise, Rprop would be used.)
+//!    fann.set_train_algorithm(TrainAlgorithm::default_quickprop());
+//!    // Train for up to 500000 epochs, displaying progress information after intervals of 1000
+//!    // epochs. Stop when the network's error on the training data drops to 0.001.
+//!    let max_epochs = 500000;
+//!    let epochs_between_reports = 1000;
+//!    let desired_error = 0.001;
+//!    // Train directly on data loaded from the file "xor.data".
+//!    fann.train_on_file("test_files/xor.data",
+//!                       max_epochs,
+//!                       epochs_between_reports,
+//!                       desired_error).unwrap();
+//!    // The network now approximates the XOR problem:
+//!    assert!(fann.run(&[-1.0,  1.0]).unwrap()[0] > 0.9);
+//!    assert!(fann.run(&[ 1.0, -1.0]).unwrap()[0] > 0.9);
+//!    assert!(fann.run(&[ 1.0,  1.0]).unwrap()[0] < 0.1);
+//!    assert!(fann.run(&[-1.0, -1.0]).unwrap()[0] < 0.1);
+//! }
+//! ```
+//!
+//! FANN also supports cascade training, where the network's topology is changed during training by
+//! adding additional neurons:
+//!
+//! ```
+//! extern crate fann;
+//! use fann::{ActivationFunc, CascadeParams, Fann};
+//!
+//! fn main() {
+//!    // Create a new network with two input neurons and one output neuron.
+//!    let mut fann = Fann::new_shortcut(&[2, 1]).unwrap();
+//!    // Use the default cascade training parameters, but a higher weight multiplier:
+//!    fann.set_cascade_params(&CascadeParams {
+//!                                 weight_multiplier: 0.6,
+//!                                 ..CascadeParams::default()
+//!                             });
+//!    // Add up to 50 neurons, displaying progress information after each.
+//!    // Stop when the network's error on the training data drops to 0.001.
+//!    let max_neurons = 50;
+//!    let neurons_between_reports = 1;
+//!    let desired_error = 0.001;
+//!    // Train directly on data loaded from the file "xor.data".
+//!    fann.cascadetrain_on_file("test_files/xor.data",
+//!                              max_neurons,
+//!                              neurons_between_reports,
+//!                              desired_error).unwrap();
+//!    // The network now approximates the XOR problem:
+//!    assert!(fann.run(&[-1.0,  1.0]).unwrap()[0] > 0.9);
+//!    assert!(fann.run(&[ 1.0, -1.0]).unwrap()[0] > 0.9);
+//!    assert!(fann.run(&[ 1.0,  1.0]).unwrap()[0] < 0.1);
+//!    assert!(fann.run(&[-1.0, -1.0]).unwrap()[0] < 0.1);
+//! }
+//! ```
+
 extern crate libc;
 extern crate fann_sys;
 
