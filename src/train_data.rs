@@ -3,8 +3,18 @@ extern crate fann_sys;
 use error::{FannError, FannErrorType, FannResult};
 use fann_sys::*;
 use libc::c_uint;
+use std::cell::RefCell;
 use std::path::Path;
+use std::ptr::copy_nonoverlapping;
 use super::{Fann, to_filename};
+
+pub type TrainCallback = Fn(c_uint) -> (Vec<fann_type>, Vec<fann_type>);
+
+// Thread-local container for user-supplied callback functions.
+// This is necessary because the raw fann_create_train_from_callback C function takes a function
+// pointer and not a closure. So instead of the user-supplied function we pass a function to it
+// which will call the content of CALLBACK.
+thread_local!(static CALLBACK: RefCell<Option<Box<TrainCallback>>> = RefCell::new(None));
 
 pub struct TrainData {
     raw: *mut fann_train_data,
@@ -34,9 +44,34 @@ impl TrainData {
         }
     }
 
-    // TODO: from_callback. The trick described in
-    // https://aatch.github.io/blog/2015/01/17/unboxed-closures-and-ffi-callbacks/
-    // does not work here because the callback doesn't take a pointer as its first argument.
+    /// Create training data using the given callback which for each number between `0` (included)
+    /// and `num_data` (excluded) returns a pair of input and output vectors with `num_input` and
+    /// `num_output` entries respectively.
+    pub fn from_callback(num_data: c_uint, num_input: c_uint, num_output: c_uint,
+                         cb: Box<TrainCallback>) -> FannResult<TrainData> {
+        extern "C" fn raw_callback(num: c_uint, num_input: c_uint, num_output: c_uint,
+                                   input: *mut fann_type, output: *mut fann_type) {
+            // Call the callback we stored in the thread-local container.
+            let (in_vec, out_vec) = CALLBACK.with(|cell| cell.borrow().as_ref().unwrap()(num));
+            // Make sure it returned data of the correct size, then copy the data.
+            assert_eq!(in_vec.len(), num_input as usize);
+            assert_eq!(out_vec.len(), num_output as usize);
+            unsafe {
+                copy_nonoverlapping(in_vec.as_ptr(), input, in_vec.len());
+                copy_nonoverlapping(out_vec.as_ptr(), output, out_vec.len());
+            }
+        }
+        unsafe {
+            // Put the callback into the thread-local container.
+            CALLBACK.with(|cell| *cell.borrow_mut() = Some(cb));
+            let raw = fann_create_train_from_callback(num_data, num_input, num_output,
+                                                      Some(raw_callback));
+            // Remove it from the thread-local container to free the memory.
+            CALLBACK.with(|cell| *cell.borrow_mut() = None);
+            try!(FannError::check_no_error(raw as *mut fann_error));
+            Ok(TrainData { raw: raw })
+        }
+    }
 
     /// Save the training data to a file.
     pub fn save<P: AsRef<Path>>(&self, path: P) -> FannResult<()> {

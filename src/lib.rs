@@ -883,7 +883,7 @@ mod tests {
     #[test]
     fn test_tutorial() {
         let max_epochs = 500000;
-        let epochs_between_reports = 1000;
+        let epochs_between_reports = 0; // Don't print reports
         let desired_error = 0.0001;
         let mut fann = Fann::new(&[2, 3, 1]).unwrap();
         fann.set_activation_func_hidden(ActivationFunc::SigmoidSymmetric);
@@ -941,4 +941,24 @@ mod tests {
         let fann = Fann::new(&[1, 1]).unwrap();
         assert_eq!(CascadeParams::default(), fann.get_cascade_params());
     }
+
+    #[test]
+    fn test_train_data_from_callback() {
+        let mut fann = Fann::new(&[2, 3, 1]).unwrap();
+        fann.set_activation_func_hidden(ActivationFunc::SigmoidSymmetric);
+        fann.set_activation_func_output(ActivationFunc::SigmoidSymmetric);
+        let td = TrainData::from_callback(4, 2, 1, Box::new(|num| match num {
+            0 => (vec!(-1.0,  1.0), vec!( 1.0)),
+            1 => (vec!( 1.0, -1.0), vec!( 1.0)),
+            2 => (vec!(-1.0, -1.0), vec!(-1.0)),
+            3 => (vec!( 1.0,  1.0), vec!(-1.0)),
+            _ => unreachable!(),
+        })).unwrap();
+        fann.train_on_data(&td, 500000, 0, 0.0001).unwrap();
+        assert!(EPSILON > ( 1.0 - fann.run(&[-1.0,  1.0]).unwrap()[0]).abs());
+        assert!(EPSILON > ( 1.0 - fann.run(&[ 1.0, -1.0]).unwrap()[0]).abs());
+        assert!(EPSILON > (-1.0 - fann.run(&[ 1.0,  1.0]).unwrap()[0]).abs());
+        assert!(EPSILON > (-1.0 - fann.run(&[-1.0, -1.0]).unwrap()[0]).abs());
+    }
+
 }
