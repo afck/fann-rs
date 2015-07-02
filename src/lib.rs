@@ -861,6 +861,9 @@ impl Fann {
         }
     }
 
+    // TODO: set_callback: Add a field to Fann to store the Rust callback called by an internal
+    //       C-compatible function.
+    // TODO: set_error_log: Always disable, due to different error handling?
     // TODO: save_to_fixed?
     // TODO: user_data methods?
 }
