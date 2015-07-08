@@ -78,11 +78,12 @@ extern crate libc;
 extern crate fann_sys;
 
 use fann_sys::*;
-use libc::{c_float, c_int, c_uint};
+use libc::{c_float, c_int, c_uint, c_void};
+use std::cell::RefCell;
 use std::ffi::CString;
-use std::mem::forget;
+use std::mem::{forget, transmute};
 use std::path::Path;
-use std::ptr::copy_nonoverlapping;
+use std::ptr::{copy_nonoverlapping, null, null_mut};
 
 pub use activation_func::ActivationFunc;
 pub use error::{FannError, FannErrorType, FannResult};
@@ -121,6 +122,27 @@ fn to_filename<P: AsRef<Path>>(path: P) -> Result<CString, FannError> {
     }
 }
 
+pub enum CallbackResult {
+    Stop,
+    Continue,
+}
+
+impl CallbackResult {
+    pub fn stop_if(condition: bool) -> CallbackResult {
+        match condition {
+            true  => CallbackResult::Stop,
+            false => CallbackResult::Continue,
+        }
+    }
+}
+
+// Thread-local container for user-supplied callback functions and the current Fann and TrainData.
+// This is necessary because the raw fann_train_on_data_with_callback C function takes a function
+// pointer and not a closure. So instead of the user-supplied function we pass a function to it
+// which will call the content of CALLBACK.
+thread_local!(static CALLBACK: RefCell<(*mut Fann, *const TrainData, *mut c_void)> =
+              RefCell::new((null_mut(), null(), null_mut())));
+
 pub struct Fann {
     // We don't consider setting and clearing the error string and number a mutation, and every
     // method should leave these fields cleared, either because it succeeded or because it read the
@@ -131,6 +153,11 @@ pub struct Fann {
 }
 
 impl Fann {
+    unsafe fn from_raw(raw: *mut fann) -> FannResult<Fann> {
+        try!(FannError::check_no_error(raw as *mut fann_error));
+        Ok(Fann { raw: raw })
+    }
+
     /// Create a fully connected neural network.
     ///
     /// There will be a bias neuron in each layer except the output layer,
@@ -168,11 +195,9 @@ impl Fann {
     ///                       and ending with the output layer.
     pub fn new_sparse(connection_rate: c_float, layers: &[c_uint]) -> FannResult<Fann> {
         unsafe {
-            let raw = fann_create_sparse_array(connection_rate,
-                                                         layers.len() as c_uint,
-                                                         layers.as_ptr());
-            try!(FannError::check_no_error(raw as *mut fann_error));
-            Ok(Fann { raw: raw })
+            Fann::from_raw(fann_create_sparse_array(connection_rate,
+                                                    layers.len() as c_uint,
+                                                    layers.as_ptr()))
         }
     }
 
@@ -181,9 +206,7 @@ impl Fann {
     /// to all neurons in all subsequent layers.
     pub fn new_shortcut(layers: &[c_uint]) -> FannResult<Fann> {
         unsafe {
-            let raw = fann_create_shortcut_array(layers.len() as c_uint, layers.as_ptr());
-            try!(FannError::check_no_error(raw as *mut fann_error));
-            Ok(Fann { raw: raw })
+            Fann::from_raw(fann_create_shortcut_array(layers.len() as c_uint, layers.as_ptr()))
         }
     }
 
@@ -191,9 +214,7 @@ impl Fann {
     pub fn from_file<P: AsRef<Path>>(path: P) -> FannResult<Fann> {
         let filename = try!(to_filename(path));
         unsafe {
-            let raw = fann_create_from_file(filename.as_ptr());
-            try!(FannError::check_no_error(raw as *mut fann_error));
-            Ok(Fann { raw: raw })
+            Fann::from_raw(fann_create_from_file(filename.as_ptr()))
         }
     }
 
@@ -300,6 +321,58 @@ impl Fann {
         Ok(())
     }
 
+    extern "C" fn raw_callback(ann: *mut fann,
+                               td: *mut fann_train_data,
+                               max_epochs: c_uint,
+                               epochs_between_reports: c_uint,
+                               desired_error: c_float,
+                               epochs: c_uint) -> c_int {
+        unsafe {
+            let (fann_ptr, data_ptr, cb_ptr) = CALLBACK.with(|cell| *cell.borrow());
+            let fann: &Fann = transmute(fann_ptr);
+            assert_eq!(ann, fann.raw);
+            let train_data: &TrainData = transmute(data_ptr);
+            assert_eq!(td, train_data.get_raw());
+            let cb: &&Fn(&Fann, &TrainData, c_uint, c_uint, c_float, c_uint) -> CallbackResult =
+                transmute(cb_ptr);
+            match cb(fann, train_data, max_epochs, epochs_between_reports, desired_error,
+                     epochs) {
+                CallbackResult::Stop      => -1,
+                CallbackResult::Continue  =>  0,
+            }
+        }
+    }
+
+    unsafe fn with_callback<C, F, T>(&mut self, data: &TrainData, callback: C, function: F) -> T
+            where F: Fn(&mut Fann) -> T,
+                  C: Fn(&Fann, &TrainData, c_uint, c_uint, c_float, c_uint) -> CallbackResult {
+        // TODO: This is an ugly hack - find better ways to solve the following issues:
+        // * The C callback is not a closure, so it cannot access the user-supplied argument.
+        //   https://aatch.github.io/blog/2015/01/17/unboxed-closures-and-ffi-callbacks doesn't
+        //   work here because the C callback doesn't take a user-defined pointer as an argument.
+        //   Instead, we store the callback in a thread-local variable that is accessed by the raw
+        //   callback.
+        // * However, the callback doesn't have a concrete type, so we actually store a pointer to
+        //   a fat pointer to the callback.
+        // * The callback's lifetime isn't known at the point where the thread-local variable is
+        //   declared, so instead of *mut &Fn..., the variable has type *mut c_void.
+        // * The C callback is only given pointers to the raw structs, not to self and data. We
+        //   store pointers to these in a thread-local variable, too.
+        // * https://github.com/rust-lang/rust/issues/24010 seems to make it impossible to define a
+        //   trait that would act as a shortcut for Fn(...) -> CallbackResult.
+        let fat_cb_ptr:
+            &(Fn(&Fann, &TrainData, c_uint, c_uint, c_float, c_uint) -> CallbackResult) =
+            &callback;
+        let self_ptr = self as *mut Fann;
+        let data_ptr = data as *const TrainData;
+        CALLBACK.with(|cell| *cell.borrow_mut() = (self_ptr, data_ptr, transmute(&fat_cb_ptr)));
+        fann_set_callback(self.raw, Some(Fann::raw_callback));
+        let result = function(self);
+        fann_set_callback(self.raw, None);
+        CALLBACK.with(|cell| *cell.borrow_mut() = (null_mut(), null(), null_mut()));
+        result
+    }
+
     /// Train the network on the given data set.
     ///
     /// # Arguments
@@ -317,11 +390,25 @@ impl Fann {
                          desired_error: c_float) -> FannResult<()> {
         unsafe {
             fann_train_on_data(self.raw,
-                                         data.get_raw(),
-                                         max_epochs,
-                                         epochs_between_reports,
-                                         desired_error);
+                               data.get_raw(),
+                               max_epochs,
+                               epochs_between_reports,
+                               desired_error);
             FannError::check_no_error(self.raw as *mut fann_error)
+        }
+    }
+
+    /// Train the network on the given data set, and periodically call the given callback.
+    pub fn train_on_data_with_callback<F>(&mut self,
+                                       data: &TrainData,
+                                       max_epochs: c_uint,
+                                       epochs_between_reports: c_uint,
+                                       desired_error: c_float,
+                                       callback: F) -> FannResult<()>
+            where F: Fn(&Fann, &TrainData, c_uint, c_uint, c_float, c_uint) -> CallbackResult {
+        unsafe {
+            self.with_callback(data, callback, |fann|
+                fann.train_on_data(data, max_epochs, epochs_between_reports, desired_error))
         }
     }
 
@@ -861,8 +948,6 @@ impl Fann {
         }
     }
 
-    // TODO: set_callback: Add a field to Fann to store the Rust callback called by an internal
-    //       C-compatible function.
     // TODO: set_error_log: Always disable, due to different error handling?
     // TODO: save_to_fixed?
     // TODO: user_data methods?
@@ -877,6 +962,7 @@ impl Drop for Fann {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use libc::{c_float, c_uint};
 
     const EPSILON: f32 = 0.2;
 
@@ -961,4 +1047,27 @@ mod tests {
         assert!(EPSILON > (-1.0 - fann.run(&[-1.0, -1.0]).unwrap()[0]).abs());
     }
 
+    #[test]
+    fn test_train_callback() {
+        let mut fann = Fann::new(&[2, 3, 1]).unwrap();
+        fann.set_activation_func_hidden(ActivationFunc::SigmoidSymmetric);
+        fann.set_activation_func_output(ActivationFunc::SigmoidSymmetric);
+        let xor_data = TrainData::from_file("test_files/xor.data").unwrap();
+        let raw = fann.raw;
+        let cb = |fann: &Fann,
+                  train_data: &TrainData,
+                  max_epochs: c_uint,
+                  epochs_between_reports: c_uint,
+                  desired_error: c_float,
+                  epochs: c_uint| {
+            assert_eq!(raw, fann.raw);
+            unsafe { assert_eq!(xor_data.get_raw(), train_data.get_raw()); }
+            assert_eq!(500000, max_epochs);
+            assert_eq!(10, epochs_between_reports);
+            assert_eq!(0.0001, desired_error);
+            assert!(epochs <= 30);
+            CallbackResult::stop_if(epochs == 30) // Stop after 30 epochs.
+        };
+        fann.train_on_data_with_callback(&xor_data, 500000, 10, 0.0001, cb).unwrap();
+    }
 }
