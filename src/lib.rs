@@ -1051,16 +1051,17 @@ mod tests {
         fann.set_activation_func_output(ActivationFunc::SigmoidSymmetric);
         let xor_data = TrainData::from_file("test_files/xor.data").unwrap();
         let raw = fann.raw;
-        let call_count = RefCell::new(0);
+        let call_count = RefCell::new(Vec::new());
         let cb = |fann: &Fann, train_data: &TrainData, epochs: c_uint| {
             assert_eq!(raw, fann.raw);
             unsafe { assert_eq!(xor_data.get_raw(), train_data.get_raw()); }
-            assert!(epochs <= 30);
-            *call_count.borrow_mut() += 1;
+            call_count.borrow_mut().push(epochs);
             CallbackResult::stop_if(epochs == 30) // Stop after 30 epochs.
         };
-        fann.on_data(&xor_data).with_callback(10, &cb).train(500000, 0.0001).unwrap();
-        // Should have been called after 0, 10, 20 and 30 epochs:
-        assert_eq!(4, *call_count.borrow());
+        fann.on_data(&xor_data).with_callback(10, &cb).train(500000, 0.00000001).unwrap();
+        // TODO: This is a little bit flaky: If by chance the desired error is reached within 30
+        //       epochs, call_count will not contain these values.
+        // Should have been called after 1, 10, 20 and 30 epochs:
+        assert_eq!(vec!(1, 10, 20, 30), *call_count.borrow());
     }
 }
