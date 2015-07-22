@@ -3,9 +3,11 @@ rust:
   - stable
   - beta
   - nightly
+sudo: false
 script:
   - cargo build --verbose && cargo test --verbose && cargo doc --verbose
-before_install:
-  - sudo apt-get update -qq
-  - sudo apt-get install -y libfann-dev
 after_success: curl https://raw.githubusercontent.com/afck/fann-rs/master/scripts/travis-doc-upload.sh | sh
+addons:
+  apt:
+    packages:
+      - libfann-dev
