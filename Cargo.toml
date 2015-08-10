@@ -1,6 +1,6 @@
 [package]
 name = "fann"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["Andreas Fackler <AndreasFackler@gmx.de>"]
 license = "LGPL-3.0"
 documentation = "https://afck.github.io/docs/fann-rs/fann"
@@ -10,6 +10,10 @@ description = """
 Wrapper for the Fast Artificial Neural Networks library
 """
 keywords = ["neural", "network", "fann", "classifier", "backpropagation"]
+
+[features]
+# Use double precision.
+double = ["fann-sys/double"]
 
 [dependencies]
 fann-sys = "*"

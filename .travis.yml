@@ -5,7 +5,11 @@ rust:
   - nightly
 sudo: false
 script:
-  - cargo build --verbose && cargo test --verbose && cargo doc --verbose
+  - cargo build --verbose
+  - cargo test --verbose
+  - cargo build --features "double" --verbose
+  - cargo test --features "double" --verbose
+  - cargo doc --verbose
 after_success: curl https://raw.githubusercontent.com/afck/fann-rs/master/scripts/travis-doc-upload.sh | sh
 addons:
   apt:

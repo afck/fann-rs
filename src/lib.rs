@@ -103,6 +103,10 @@ mod stop_func;
 mod train_algorithm;
 mod train_data;
 
+/// The type of weights, inputs and outputs in a neural network. It is defined as `c_float` by
+/// default, and as `c_double` if the `double` feature is configured.
+pub type FannType = fann_type;
+
 pub type Connection = fann_connection;
 
 /// Convert a path to a `CString`.
@@ -366,7 +370,7 @@ impl Fann {
     /// Give each connection a random weight between `min_weight` and `max_weight`.
     ///
     /// By default, weights in a new network are random between -0.1 and 0.1.
-    pub fn randomize_weights(&mut self, min_weight: fann_type, max_weight: fann_type) {
+    pub fn randomize_weights(&mut self, min_weight: FannType, max_weight: FannType) {
         unsafe { fann_randomize_weights(self.raw, min_weight, max_weight) }
     }
 
@@ -414,7 +418,7 @@ impl Fann {
 
     /// Return an `Err` if the size of the slice does not match the number of input neurons,
     /// otherwise `Ok(())`.
-    fn check_input_size(&self, input: &[fann_type]) -> FannResult<()> {
+    fn check_input_size(&self, input: &[FannType]) -> FannResult<()> {
         let num_input = self.get_num_input() as usize;
         if input.len() == num_input {
             Ok(())
@@ -429,7 +433,7 @@ impl Fann {
 
     /// Return an `Err` if the size of the slice does not match the number of output neurons,
     /// otherwise `Ok(())`.
-    fn check_output_size(&self, output: &[fann_type]) -> FannResult<()> {
+    fn check_output_size(&self, output: &[FannType]) -> FannResult<()> {
         let num_output = self.get_num_output() as usize;
         if output.len() == num_output {
             Ok(())
@@ -444,7 +448,7 @@ impl Fann {
 
     /// Train with a single pair of input and output. This is always incremental training (see
     /// `TrainAlg`), since only one pattern is presented.
-    pub fn train(&mut self, input: &[fann_type], desired_output: &[fann_type]) -> FannResult<()> {
+    pub fn train(&mut self, input: &[FannType], desired_output: &[FannType]) -> FannResult<()> {
         unsafe {
             try!(self.check_input_size(input));
             try!(self.check_output_size(desired_output));
@@ -483,8 +487,8 @@ impl Fann {
     /// but does not change the network.
     ///
     /// Returns the actual output of the network.
-    pub fn test(&mut self, input: &[fann_type], desired_output: &[fann_type])
-            -> FannResult<Vec<fann_type>> {
+    pub fn test(&mut self, input: &[FannType], desired_output: &[FannType])
+            -> FannResult<Vec<FannType>> {
         try!(self.check_input_size(input));
         try!(self.check_output_size(desired_output));
         let num_output = self.get_num_output() as usize;
@@ -526,7 +530,7 @@ impl Fann {
     /// Run the input through the neural network and returns the output. The length of the input
     /// must equal the number of input neurons and the length of the output will equal the number
     /// of output neurons.
-    pub fn run(&self, input: &[fann_type]) -> FannResult<Vec<fann_type>> {
+    pub fn run(&self, input: &[FannType]) -> FannResult<Vec<FannType>> {
         try!(self.check_input_size(input));
         let num_output = self.get_num_output() as usize;
         let mut result = Vec::with_capacity(num_output);
@@ -620,7 +624,7 @@ impl Fann {
     }
 
     /// Set the weight of the given connection.
-    pub fn set_weight(&mut self, from_neuron: c_uint, to_neuron: c_uint, weight: fann_type) {
+    pub fn set_weight(&mut self, from_neuron: c_uint, to_neuron: c_uint, weight: FannType) {
         unsafe { fann_set_weight(self.raw, from_neuron, to_neuron, weight) }
     }
 
@@ -658,7 +662,7 @@ impl Fann {
     }
 
     /// Get the activation steepness for neuron number `neuron` in layer number `layer`.
-    pub fn get_activation_steepness(&self, layer: c_int, neuron: c_int) -> Option<fann_type> {
+    pub fn get_activation_steepness(&self, layer: c_int, neuron: c_int) -> Option<FannType> {
         let steepness = unsafe { fann_get_activation_steepness(self.raw, layer, neuron) };
         match steepness {
             -1.0 => None,
@@ -677,22 +681,22 @@ impl Fann {
     /// be either almost 0 or almost 1.
     ///
     /// The default value is 0.5.
-    pub fn set_activation_steepness(&self, steepness: fann_type, layer: c_int, neuron: c_int) {
+    pub fn set_activation_steepness(&self, steepness: FannType, layer: c_int, neuron: c_int) {
         unsafe { fann_set_activation_steepness(self.raw, steepness, layer, neuron) }
     }
 
     /// Set the activation steepness for layer number `layer`.
-    pub fn set_activation_steepness_layer(&self, steepness: fann_type, layer: c_int) {
+    pub fn set_activation_steepness_layer(&self, steepness: FannType, layer: c_int) {
         unsafe { fann_set_activation_steepness_layer(self.raw, steepness, layer) }
     }
 
     /// Set the activation steepness for all hidden layers.
-    pub fn set_activation_steepness_hidden(&self, steepness: fann_type) {
+    pub fn set_activation_steepness_hidden(&self, steepness: FannType) {
         unsafe { fann_set_activation_steepness_hidden(self.raw, steepness) }
     }
 
     /// Set the activation steepness for the output layer.
-    pub fn set_activation_steepness_output(&self, steepness: fann_type) {
+    pub fn set_activation_steepness_output(&self, steepness: FannType) {
         unsafe { fann_set_activation_steepness_output(self.raw, steepness) }
     }
 
@@ -725,7 +729,7 @@ impl Fann {
     }
 
     /// Get the bit fail limit.
-    pub fn get_bit_fail_limit(&self) -> fann_type {
+    pub fn get_bit_fail_limit(&self) -> FannType {
         unsafe { fann_get_bit_fail_limit(self.raw) }
     }
 
@@ -733,7 +737,7 @@ impl Fann {
     ///
     /// Each output neuron value that differs from the desired output by more than the bit fail
     /// limit is counted as a failed bit.
-    pub fn set_bit_fail_limit(&mut self, bit_fail_limit: fann_type) {
+    pub fn set_bit_fail_limit(&mut self, bit_fail_limit: FannType) {
         unsafe { fann_set_bit_fail_limit(self.raw, bit_fail_limit) }
     }
 
@@ -914,7 +918,7 @@ impl Fann {
 
     /// Scale data in input vector before feeding it to the network, based on previously calculated
     /// parameters.
-    pub fn scale_input(&self, input: &mut [fann_type]) -> FannResult<()> {
+    pub fn scale_input(&self, input: &mut [FannType]) -> FannResult<()> {
         unsafe {
             fann_scale_input(self.raw, input.as_mut_ptr());
             FannError::check_no_error(self.raw as *mut fann_error)
@@ -923,7 +927,7 @@ impl Fann {
 
     /// Scale data in output vector before feeding it to the network, based on previously calculated
     /// parameters.
-    pub fn scale_output(&self, output: &mut [fann_type]) -> FannResult<()> {
+    pub fn scale_output(&self, output: &mut [FannType]) -> FannResult<()> {
         unsafe {
             fann_scale_output(self.raw, output.as_mut_ptr());
             FannError::check_no_error(self.raw as *mut fann_error)
@@ -932,7 +936,7 @@ impl Fann {
 
     /// Descale data in input vector after feeding it to the network, based on previously calculated
     /// parameters.
-    pub fn descale_input(&self, input: &mut [fann_type]) -> FannResult<()> {
+    pub fn descale_input(&self, input: &mut [FannType]) -> FannResult<()> {
         unsafe {
             fann_descale_input(self.raw, input.as_mut_ptr());
             FannError::check_no_error(self.raw as *mut fann_error)
@@ -941,7 +945,7 @@ impl Fann {
 
     /// Descale data in output vector after getting it from the network, based on previously
     /// calculated parameters.
-    pub fn descale_output(&self, output: &mut [fann_type]) -> FannResult<()> {
+    pub fn descale_output(&self, output: &mut [FannType]) -> FannResult<()> {
         unsafe {
             fann_descale_output(self.raw, output.as_mut_ptr());
             FannError::check_no_error(self.raw as *mut fann_error)
@@ -965,7 +969,7 @@ mod tests {
     use libc::c_uint;
     use std::cell::RefCell;
 
-    const EPSILON: f32 = 0.2;
+    const EPSILON: FannType = 0.2;
 
     #[test]
     fn test_tutorial() {
