@@ -131,6 +131,28 @@ enum CurrentTrainData<'a> {
     Ref(&'a TrainData),
 }
 
+// Thread-local container for a pointer to the current FannTrainer.
+// This is necessary because the raw fann_train_on_data_with_callback C function takes a function
+// pointer and not a closure. So instead of the user-supplied function we pass a function to it
+// which will call the callback stored in the trainer.
+// The 'static lifetime is a lie! But the trainer lives longer than the train method runs, and
+// afterwards resets this pointer to null again.
+thread_local!(static TRAINER: RefCell<*mut FannTrainer<'static>> = RefCell::new(null_mut()));
+
+pub enum CallbackResult {
+    Stop,
+    Continue,
+}
+
+impl CallbackResult {
+    pub fn stop_if(condition: bool) -> CallbackResult {
+        match condition {
+            true  => CallbackResult::Stop,
+            false => CallbackResult::Continue,
+        }
+    }
+}
+
 /// A training configuration. Create this with `Fann::on_data` or `Fann::on_file` and run the
 /// training with `train`.
 pub struct FannTrainer<'a> {
@@ -213,14 +235,16 @@ impl<'a> FannTrainer<'a> {
         //   given raw structs.
         // * https://github.com/rust-lang/rust/issues/24010 seems to make it impossible to define a
         //   trait that would act as a shortcut for Fn(...) -> CallbackResult.
-        unsafe {
-            let trainer: &mut FannTrainer<'static> = transmute(TRAINER.with(|cell| *cell.borrow()));
-            assert_eq!(ann, trainer.fann.raw);
-            assert_eq!(td, trainer.get_data().unwrap().get_raw());
-            match trainer.callback.unwrap()(trainer.fann, trainer.get_data().unwrap(), steps) {
-                CallbackResult::Stop      => -1,
-                CallbackResult::Continue  =>  0,
-            }
+        match TRAINER.with(|cell| unsafe {
+            let trainer = *cell.borrow();
+            let data = (*trainer).get_data().unwrap();
+            assert_eq!(ann, (*trainer).fann.raw);
+            assert_eq!(td, data.get_raw());
+            let callback = (*trainer).callback.unwrap();
+            callback((*trainer).fann, data, steps)
+        }) {
+            CallbackResult::Stop      => -1,
+            CallbackResult::Continue  =>  0,
         }
     }
 
@@ -239,9 +263,8 @@ impl<'a> FannTrainer<'a> {
     pub fn train(&mut self, max_steps: c_uint, desired_error: c_float) -> FannResult<()> {
         unsafe {
             let raw_data = try!(self.get_data()).get_raw();
-            let self_ptr: *mut &mut FannTrainer<'static> = transmute(&self);
             if self.callback.is_some() {
-                TRAINER.with(|cell| *cell.borrow_mut() = *self_ptr);
+                TRAINER.with(|cell| *cell.borrow_mut() = transmute(&mut *self));
                 fann_set_callback(self.fann.raw, Some(FannTrainer::raw_callback));
             }
             let raw_train_fn = match self.cascade {
@@ -254,28 +277,6 @@ impl<'a> FannTrainer<'a> {
                 TRAINER.with(|cell| *cell.borrow_mut() = null_mut());
             }
             FannError::check_no_error(self.fann.raw as *mut fann_error)
-        }
-    }
-}
-
-// Thread-local container for a pointer to the current FannTrainer.
-// This is necessary because the raw fann_train_on_data_with_callback C function takes a function
-// pointer and not a closure. So instead of the user-supplied function we pass a function to it
-// which will call the callback stored in the trainer.
-// The 'static lifetime is a lie! But the trainer lives longer than the train method runs, and
-// afterwards resets this pointer to null again.
-thread_local!(static TRAINER: RefCell<*mut FannTrainer<'static>> = RefCell::new(null_mut()));
-
-pub enum CallbackResult {
-    Stop,
-    Continue,
-}
-
-impl CallbackResult {
-    pub fn stop_if(condition: bool) -> CallbackResult {
-        match condition {
-            true  => CallbackResult::Stop,
-            false => CallbackResult::Continue,
         }
     }
 }
