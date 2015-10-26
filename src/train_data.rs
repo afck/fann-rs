@@ -82,7 +82,7 @@ impl TrainData {
             if result == -1 {
                 Err(FannError {
                     error_type: FannErrorType::CantSaveFile,
-                    error_str: "Error saving training data".to_string(),
+                    error_str: "Error saving training data".to_owned(),
                 })
             } else {
                 Ok(())

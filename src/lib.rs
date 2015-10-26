@@ -111,10 +111,10 @@ pub type Connection = fann_connection;
 
 /// Convert a path to a `CString`.
 fn to_filename<P: AsRef<Path>>(path: P) -> Result<CString, FannError> {
-    match path.as_ref().to_str().map(|s| CString::new(s)) {
+    match path.as_ref().to_str().map(CString::new) {
         None => Err(FannError {
                     error_type: FannErrorType::CantOpenTdR,
-                    error_str: "File name contains invalid unicode characters".to_string(),
+                    error_str: "File name contains invalid unicode characters".to_owned(),
                 }),
         Some(Err(e)) => Err(FannError {
                             error_type: FannErrorType::CantOpenTdR,
@@ -139,6 +139,7 @@ enum CurrentTrainData<'a> {
 // afterwards resets this pointer to null again.
 thread_local!(static TRAINER: RefCell<*mut FannTrainer<'static>> = RefCell::new(null_mut()));
 
+#[derive(Clone, Copy, Debug)]
 pub enum CallbackResult {
     Stop,
     Continue,
@@ -146,10 +147,7 @@ pub enum CallbackResult {
 
 impl CallbackResult {
     pub fn stop_if(condition: bool) -> CallbackResult {
-        match condition {
-            true  => CallbackResult::Stop,
-            false => CallbackResult::Continue,
-        }
+        if condition { CallbackResult::Stop } else { CallbackResult::Continue }
     }
 }
 
@@ -174,7 +172,7 @@ impl<'a> FannTrainer<'a> {
         }
     }
 
-    fn with_file<'b, P: AsRef<Path>>(fann: &'b mut Fann, path: P) -> FannTrainer<'b> {
+    fn with_file<P: AsRef<Path>>(fann: &mut Fann, path: P) -> FannTrainer {
         FannTrainer {
             fann: fann,
             cur_data: CurrentTrainData::Own(TrainData::from_file(path)),
@@ -267,10 +265,8 @@ impl<'a> FannTrainer<'a> {
                 TRAINER.with(|cell| *cell.borrow_mut() = transmute(&mut *self));
                 fann_set_callback(self.fann.raw, Some(FannTrainer::raw_callback));
             }
-            let raw_train_fn = match self.cascade {
-                true  => fann_cascadetrain_on_data,
-                false => fann_train_on_data,
-            };
+            let raw_train_fn =
+                if self.cascade { fann_cascadetrain_on_data } else { fann_train_on_data };
             raw_train_fn(self.fann.raw, raw_data, max_steps, self.interval, desired_error);
             if self.callback.is_some() {
                 fann_set_callback(self.fann.raw, None);
@@ -465,7 +461,7 @@ impl Fann {
     }
 
     /// Create a training configuration, reading the training data from the given file.
-    pub fn on_file<'a, P: AsRef<Path>>(&'a mut self, path: P) -> FannTrainer<'a> {
+    pub fn on_file<P: AsRef<Path>>(&mut self, path: P) -> FannTrainer {
         FannTrainer::with_file(self, path)
     }
 

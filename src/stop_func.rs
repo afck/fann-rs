@@ -1,7 +1,7 @@
 use fann_sys::*;
 
 /// Stop critieria for training.
-#[derive(Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum StopFunc {
     /// The mean square error of the whole output.
     Mse,

@@ -1,7 +1,7 @@
 use fann_sys::*;
 
 /// Error function used during training.
-#[derive(Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum ErrorFunc {
     /// Standard linear error function
     Linear,

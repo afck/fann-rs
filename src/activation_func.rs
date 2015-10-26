@@ -161,7 +161,7 @@ impl ActivationFunc {
         match af_enum {
             FANN_NONE => Err(FannError {
                              error_type: FannErrorType::IndexOutOfBound,
-                             error_str: "Neuron or layer index is out of bound.".to_string(),
+                             error_str: "Neuron or layer index is out of bound.".to_owned(),
                          }),
             FANN_LINEAR                     => Ok(ActivationFunc::Linear),
             FANN_THRESHOLD                  => Ok(ActivationFunc::Threshold),

@@ -107,7 +107,7 @@ impl FannError {
         if errdat.is_null() {
             return Err(FannError {
                 error_type: FannErrorType::CantAllocateMem,
-                error_str: "Unable to create a new object".to_string(),
+                error_str: "Unable to create a new object".to_owned(),
             });
         }
         let error_type = match fann_get_errno(errdat) {
@@ -135,7 +135,7 @@ impl FannError {
         let error_str_opt = String::from_utf8(errstr_bytes);
         Err(FannError {
             error_type: error_type,
-            error_str: error_str_opt.unwrap_or("Invalid UTF-8 in error string".to_string()),
+            error_str: error_str_opt.unwrap_or("Invalid UTF-8 in error string".to_owned()),
         })
     }
 
@@ -147,7 +147,7 @@ impl FannError {
             0 => Ok(()),
             _ => Err(FannError {
                      error_type: FannErrorType::ErrorCodeReturned,
-                     error_str: error_str.to_string(),
+                     error_str: error_str.to_owned(),
                  }),
         }
     }
