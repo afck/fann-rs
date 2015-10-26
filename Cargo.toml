@@ -1,6 +1,6 @@
 [package]
 name = "fann"
-version = "0.1.3"
+version = "0.1.5"
 authors = ["Andreas Fackler <AndreasFackler@gmx.de>"]
 license = "LGPL-3.0"
 documentation = "https://afck.github.io/docs/fann-rs/fann"
@@ -16,5 +16,5 @@ keywords = ["neural", "network", "fann", "classifier", "backpropagation"]
 double = ["fann-sys/double"]
 
 [dependencies]
-fann-sys = "*"
-libc = "*"
+fann-sys = "0.1.5"
+libc = "0.1.*"
