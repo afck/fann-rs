@@ -1057,12 +1057,12 @@ mod tests {
             assert_eq!(raw, fann.raw);
             unsafe { assert_eq!(xor_data.get_raw(), train_data.get_raw()); }
             call_count.borrow_mut().push(epochs);
-            CallbackResult::stop_if(epochs == 30) // Stop after 30 epochs.
+            CallbackResult::stop_if(epochs == 20) // Stop after 20 epochs.
         };
         fann.on_data(&xor_data).with_callback(10, &cb).train(500000, 0.00000001).unwrap();
-        // TODO: This is a little bit flaky: If by chance the desired error is reached within 30
+        // TODO: This is a little bit flaky: If by chance the desired error is reached within 20
         //       epochs, call_count will not contain these values.
-        // Should have been called after 1, 10, 20 and 30 epochs:
-        assert_eq!(vec!(1, 10, 20, 30), *call_count.borrow());
+        // Should have been called after 1, 10 and 20 epochs:
+        assert_eq!(vec!(1, 10, 20), *call_count.borrow());
     }
 }
