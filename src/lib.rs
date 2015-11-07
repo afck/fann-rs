@@ -963,8 +963,10 @@ impl Drop for Fann {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use fann_sys;
     use libc::c_uint;
     use std::cell::RefCell;
+    use std::ptr::null_mut;
 
     const EPSILON: FannType = 0.2;
 
@@ -985,6 +987,8 @@ mod tests {
     #[test]
     fn test_activation_func() {
         let mut fann = Fann::new(&[4, 3, 3, 1]).unwrap();
+        // Don't print the expected errors:
+        unsafe { fann_sys::fann_set_error_log(fann.raw as *mut fann_sys::fann_error, null_mut()); }
         assert!(fann.get_activation_func(0, 1).is_err());
         assert!(fann.get_activation_func(4, 1).is_err());
         assert_eq!(Ok(ActivationFunc::SigmoidStepwise), fann.get_activation_func(2, 2));
@@ -1047,22 +1051,21 @@ mod tests {
 
     #[test]
     fn test_train_callback() {
-        let mut fann = Fann::new(&[2, 3, 1]).unwrap();
-        fann.set_activation_func_hidden(ActivationFunc::SigmoidSymmetric);
-        fann.set_activation_func_output(ActivationFunc::SigmoidSymmetric);
+        // Without a hidden layer, the XOR problem cannot be solved, so the training will only stop
+        // when the callback says so.
+        let mut fann = Fann::new(&[2, 1]).unwrap();
+        fann.set_activation_func_output(ActivationFunc::LinearPiece);
         let xor_data = TrainData::from_file("test_files/xor.data").unwrap();
         let raw = fann.raw;
-        let call_count = RefCell::new(Vec::new());
+        let callback_epochs = RefCell::new(Vec::new());
         let cb = |fann: &Fann, train_data: &TrainData, epochs: c_uint| {
             assert_eq!(raw, fann.raw);
             unsafe { assert_eq!(xor_data.get_raw(), train_data.get_raw()); }
-            call_count.borrow_mut().push(epochs);
-            CallbackResult::stop_if(epochs == 20) // Stop after 20 epochs.
+            callback_epochs.borrow_mut().push(epochs);
+            CallbackResult::stop_if(epochs == 40) // Stop after 40 epochs.
         };
-        fann.on_data(&xor_data).with_callback(10, &cb).train(500000, 0.00000001).unwrap();
-        // TODO: This is a little bit flaky: If by chance the desired error is reached within 20
-        //       epochs, call_count will not contain these values.
-        // Should have been called after 1, 10 and 20 epochs:
-        assert_eq!(vec!(1, 10, 20), *call_count.borrow());
+        fann.on_data(&xor_data).with_callback(10, &cb).train(100, 0.1).unwrap();
+        // The interval was 10 epochs. Also, FANN always runs the callback after the first epoch.
+        assert_eq!(vec!(1, 10, 20, 30, 40), *callback_epochs.borrow());
     }
 }
