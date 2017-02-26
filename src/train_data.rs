@@ -47,10 +47,16 @@ impl TrainData {
     /// Create training data using the given callback which for each number between `0` (included)
     /// and `num_data` (excluded) returns a pair of input and output vectors with `num_input` and
     /// `num_output` entries respectively.
-    pub fn from_callback(num_data: c_uint, num_input: c_uint, num_output: c_uint,
-                         cb: Box<TrainCallback>) -> FannResult<TrainData> {
-        extern "C" fn raw_callback(num: c_uint, num_input: c_uint, num_output: c_uint,
-                                   input: *mut fann_type, output: *mut fann_type) {
+    pub fn from_callback(num_data: c_uint,
+                         num_input: c_uint,
+                         num_output: c_uint,
+                         cb: Box<TrainCallback>)
+                         -> FannResult<TrainData> {
+        extern "C" fn raw_callback(num: c_uint,
+                                   num_input: c_uint,
+                                   num_output: c_uint,
+                                   input: *mut fann_type,
+                                   output: *mut fann_type) {
             // Call the callback we stored in the thread-local container.
             let (in_vec, out_vec) = CALLBACK.with(|cell| cell.borrow().as_ref().unwrap()(num));
             // Make sure it returned data of the correct size, then copy the data.
@@ -64,7 +70,9 @@ impl TrainData {
         unsafe {
             // Put the callback into the thread-local container.
             CALLBACK.with(|cell| *cell.borrow_mut() = Some(cb));
-            let raw = fann_create_train_from_callback(num_data, num_input, num_output,
+            let raw = fann_create_train_from_callback(num_data,
+                                                      num_input,
+                                                      num_output,
                                                       Some(raw_callback));
             // Remove it from the thread-local container to free the memory.
             CALLBACK.with(|cell| *cell.borrow_mut() = None);
@@ -171,7 +179,9 @@ impl TrainData {
     /// Shuffle training data, randomizing the order. This is recommended for incremental training
     /// while it does not affect batch training.
     pub fn shuffle(&mut self) {
-        unsafe { fann_shuffle_train_data(self.raw); }
+        unsafe {
+            fann_shuffle_train_data(self.raw);
+        }
     }
 
     /// Get a pointer to the underlying raw `fann_train_data` structure.
@@ -196,6 +206,8 @@ impl Clone for TrainData {
 
 impl Drop for TrainData {
     fn drop(&mut self) {
-        unsafe { fann_destroy_train(self.raw); }
+        unsafe {
+            fann_destroy_train(self.raw);
+        }
     }
 }

@@ -16,7 +16,7 @@ impl ErrorFunc {
     pub fn from_errorfunc_enum(ef_enum: fann_errorfunc_enum) -> ErrorFunc {
         match ef_enum {
             FANN_ERRORFUNC_LINEAR => ErrorFunc::Linear,
-            FANN_ERRORFUNC_TANH   => ErrorFunc::Tanh,
+            FANN_ERRORFUNC_TANH => ErrorFunc::Tanh,
         }
     }
 
@@ -24,7 +24,7 @@ impl ErrorFunc {
     pub fn to_errorfunc_enum(&self) -> fann_errorfunc_enum {
         match *self {
             ErrorFunc::Linear => FANN_ERRORFUNC_LINEAR,
-            ErrorFunc::Tanh   => FANN_ERRORFUNC_TANH,
+            ErrorFunc::Tanh => FANN_ERRORFUNC_TANH,
         }
     }
 }

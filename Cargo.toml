@@ -17,4 +17,4 @@ double = ["fann-sys/double"]
 
 [dependencies]
 fann-sys = "0.1.6"
-libc = "0.2.*"
+libc = "~0.2.20"

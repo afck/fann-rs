@@ -54,27 +54,40 @@ pub enum FannErrorType {
 impl fmt::Display for FannErrorType {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         fmt::Display::fmt(match *self {
-            CantOpenConfigR     => "Unable to open configuration file for reading",
-            CantOpenConfigW     => "Unable to open configuration file for writing",
-            WrongConfigVersion  => "Wrong version of configuration file",
-            CantReadConfig      => "Error reading info from configuration file",
-            CantReadNeuron      => "Error reading neuron info from configuration file",
-            CantReadConnections => "Error reading connections from configuration file",
-            WrongNumConnections => "Number of connections not equal to the number expected",
-            CantOpenTdW         => "Unable to open train data file for writing",
-            CantOpenTdR         => "Unable to open train data file for reading",
-            CantReadTd          => "Error reading training data from file",
-            CantAllocateMem     => "Unable to allocate memory",
-            CantTrainActivation => "Unable to train with the selected activation function",
-            CantUseActivation   => "Unable to use the selected activation function",
-            TrainDataMismatch   => "Irreconcilable differences between two Fann objects",
-            CantUseTrainAlg     => "Unable to use the selected training algorithm",
-            TrainDataSubset     => "Trying to take subset which is not within the training set",
-            IndexOutOfBound     => "Index is out of bound",
-            ScaleNotPresent     => "Scaling parameters not present",
-            CantSaveFile        => "Failed saving file",
-            ErrorCodeReturned   => "C function returned an error code but did not specify error",
-        }, f)
+                              CantOpenConfigR => "Unable to open configuration file for reading",
+                              CantOpenConfigW => "Unable to open configuration file for writing",
+                              WrongConfigVersion => "Wrong version of configuration file",
+                              CantReadConfig => "Error reading info from configuration file",
+                              CantReadNeuron => "Error reading neuron info from configuration file",
+                              CantReadConnections => {
+                                  "Error reading connections from configuration file"
+                              }
+                              WrongNumConnections => {
+                                  "Number of connections not equal to the number expected"
+                              }
+                              CantOpenTdW => "Unable to open train data file for writing",
+                              CantOpenTdR => "Unable to open train data file for reading",
+                              CantReadTd => "Error reading training data from file",
+                              CantAllocateMem => "Unable to allocate memory",
+                              CantTrainActivation => {
+                                  "Unable to train with the selected activation function"
+                              }
+                              CantUseActivation => "Unable to use the selected activation function",
+                              TrainDataMismatch => {
+                                  "Irreconcilable differences between two Fann objects"
+                              }
+                              CantUseTrainAlg => "Unable to use the selected training algorithm",
+                              TrainDataSubset => {
+                                  "Trying to take subset which is not within the training set"
+                              }
+                              IndexOutOfBound => "Index is out of bound",
+                              ScaleNotPresent => "Scaling parameters not present",
+                              CantSaveFile => "Failed saving file",
+                              ErrorCodeReturned => {
+                                  "C function returned an error code but did not specify error"
+                              }
+                          },
+                          f)
     }
 }
 
@@ -111,25 +124,25 @@ impl FannError {
             });
         }
         let error_type = match fann_get_errno(errdat) {
-            FANN_E_NO_ERROR              => return Ok(()),
-            FANN_E_CANT_OPEN_CONFIG_R    => CantOpenConfigR,
-            FANN_E_CANT_OPEN_CONFIG_W    => CantOpenConfigW,
-            FANN_E_WRONG_CONFIG_VERSION  => WrongConfigVersion,
-            FANN_E_CANT_READ_CONFIG      => CantReadConfig,
-            FANN_E_CANT_READ_NEURON      => CantReadNeuron,
+            FANN_E_NO_ERROR => return Ok(()),
+            FANN_E_CANT_OPEN_CONFIG_R => CantOpenConfigR,
+            FANN_E_CANT_OPEN_CONFIG_W => CantOpenConfigW,
+            FANN_E_WRONG_CONFIG_VERSION => WrongConfigVersion,
+            FANN_E_CANT_READ_CONFIG => CantReadConfig,
+            FANN_E_CANT_READ_NEURON => CantReadNeuron,
             FANN_E_CANT_READ_CONNECTIONS => CantReadConnections,
             FANN_E_WRONG_NUM_CONNECTIONS => WrongNumConnections,
-            FANN_E_CANT_OPEN_TD_W        => CantOpenTdW,
-            FANN_E_CANT_OPEN_TD_R        => CantOpenTdR,
-            FANN_E_CANT_READ_TD          => CantReadTd,
-            FANN_E_CANT_ALLOCATE_MEM     => CantAllocateMem,
+            FANN_E_CANT_OPEN_TD_W => CantOpenTdW,
+            FANN_E_CANT_OPEN_TD_R => CantOpenTdR,
+            FANN_E_CANT_READ_TD => CantReadTd,
+            FANN_E_CANT_ALLOCATE_MEM => CantAllocateMem,
             FANN_E_CANT_TRAIN_ACTIVATION => CantTrainActivation,
-            FANN_E_CANT_USE_ACTIVATION   => CantUseActivation,
-            FANN_E_TRAIN_DATA_MISMATCH   => TrainDataMismatch,
-            FANN_E_CANT_USE_TRAIN_ALG    => CantUseTrainAlg,
-            FANN_E_TRAIN_DATA_SUBSET     => TrainDataSubset,
-            FANN_E_INDEX_OUT_OF_BOUND    => IndexOutOfBound,
-            FANN_E_SCALE_NOT_PRESENT     => ScaleNotPresent,
+            FANN_E_CANT_USE_ACTIVATION => CantUseActivation,
+            FANN_E_TRAIN_DATA_MISMATCH => TrainDataMismatch,
+            FANN_E_CANT_USE_TRAIN_ALG => CantUseTrainAlg,
+            FANN_E_TRAIN_DATA_SUBSET => TrainDataSubset,
+            FANN_E_INDEX_OUT_OF_BOUND => IndexOutOfBound,
+            FANN_E_SCALE_NOT_PRESENT => ScaleNotPresent,
         };
         let errstr_bytes = CStr::from_ptr(fann_get_errstr(errdat)).to_bytes().to_vec();
         let error_str_opt = String::from_utf8(errstr_bytes);
@@ -141,15 +154,17 @@ impl FannError {
 
     pub unsafe fn check_zero(result: c_int,
                              errdat: *mut fann_error,
-                             error_str: &str) -> FannResult<()> {
+                             error_str: &str)
+                             -> FannResult<()> {
         try!(FannError::check_no_error(errdat));
         match result {
             0 => Ok(()),
-            _ => Err(FannError {
-                     error_type: FannErrorType::ErrorCodeReturned,
-                     error_str: error_str.to_owned(),
-                 }),
+            _ => {
+                Err(FannError {
+                    error_type: FannErrorType::ErrorCodeReturned,
+                    error_str: error_str.to_owned(),
+                })
+            }
         }
     }
 }
-

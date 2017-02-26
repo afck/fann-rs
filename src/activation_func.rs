@@ -157,55 +157,56 @@ pub enum ActivationFunc {
 impl ActivationFunc {
     /// Create an `ActivationFunc` from a `fann_sys::fann_activationfunc_enum`.
     pub fn from_fann_activationfunc_enum(af_enum: fann_activationfunc_enum)
-            -> FannResult<ActivationFunc> {
+                                         -> FannResult<ActivationFunc> {
         match af_enum {
-            FANN_NONE => Err(FannError {
-                             error_type: FannErrorType::IndexOutOfBound,
-                             error_str: "Neuron or layer index is out of bound.".to_owned(),
-                         }),
-            FANN_LINEAR                     => Ok(ActivationFunc::Linear),
-            FANN_THRESHOLD                  => Ok(ActivationFunc::Threshold),
-            FANN_THRESHOLD_SYMMETRIC        => Ok(ActivationFunc::ThresholdSymmetric),
-            FANN_SIGMOID                    => Ok(ActivationFunc::Sigmoid),
-            FANN_SIGMOID_STEPWISE           => Ok(ActivationFunc::SigmoidStepwise),
-            FANN_SIGMOID_SYMMETRIC          => Ok(ActivationFunc::SigmoidSymmetric),
+            FANN_NONE => {
+                Err(FannError {
+                    error_type: FannErrorType::IndexOutOfBound,
+                    error_str: "Neuron or layer index is out of bound.".to_owned(),
+                })
+            }
+            FANN_LINEAR => Ok(ActivationFunc::Linear),
+            FANN_THRESHOLD => Ok(ActivationFunc::Threshold),
+            FANN_THRESHOLD_SYMMETRIC => Ok(ActivationFunc::ThresholdSymmetric),
+            FANN_SIGMOID => Ok(ActivationFunc::Sigmoid),
+            FANN_SIGMOID_STEPWISE => Ok(ActivationFunc::SigmoidStepwise),
+            FANN_SIGMOID_SYMMETRIC => Ok(ActivationFunc::SigmoidSymmetric),
             FANN_SIGMOID_SYMMETRIC_STEPWISE => Ok(ActivationFunc::SigmoidSymmetricStepwise),
-            FANN_GAUSSIAN                   => Ok(ActivationFunc::Gaussian),
-            FANN_GAUSSIAN_SYMMETRIC         => Ok(ActivationFunc::GaussianSymmetric),
-            FANN_GAUSSIAN_STEPWISE          => Ok(ActivationFunc::GaussianStepwise),
-            FANN_ELLIOTT                    => Ok(ActivationFunc::Elliott),
-            FANN_ELLIOTT_SYMMETRIC          => Ok(ActivationFunc::ElliottSymmetric),
-            FANN_LINEAR_PIECE               => Ok(ActivationFunc::LinearPiece),
-            FANN_LINEAR_PIECE_SYMMETRIC     => Ok(ActivationFunc::LinearPieceSymmetric),
-            FANN_SIN_SYMMETRIC              => Ok(ActivationFunc::SinSymmetric),
-            FANN_COS_SYMMETRIC              => Ok(ActivationFunc::CosSymmetric),
-            FANN_SIN                        => Ok(ActivationFunc::Sin),
-            FANN_COS                        => Ok(ActivationFunc::Cos),
+            FANN_GAUSSIAN => Ok(ActivationFunc::Gaussian),
+            FANN_GAUSSIAN_SYMMETRIC => Ok(ActivationFunc::GaussianSymmetric),
+            FANN_GAUSSIAN_STEPWISE => Ok(ActivationFunc::GaussianStepwise),
+            FANN_ELLIOTT => Ok(ActivationFunc::Elliott),
+            FANN_ELLIOTT_SYMMETRIC => Ok(ActivationFunc::ElliottSymmetric),
+            FANN_LINEAR_PIECE => Ok(ActivationFunc::LinearPiece),
+            FANN_LINEAR_PIECE_SYMMETRIC => Ok(ActivationFunc::LinearPieceSymmetric),
+            FANN_SIN_SYMMETRIC => Ok(ActivationFunc::SinSymmetric),
+            FANN_COS_SYMMETRIC => Ok(ActivationFunc::CosSymmetric),
+            FANN_SIN => Ok(ActivationFunc::Sin),
+            FANN_COS => Ok(ActivationFunc::Cos),
         }
     }
 
     /// Return the `fann_sys::fann_activationfunc_enum` corresponding to this `ActivationFunc`.
     pub fn to_fann_activationfunc_enum(&self) -> fann_activationfunc_enum {
         match *self {
-            ActivationFunc::Linear                   => FANN_LINEAR,
-            ActivationFunc::Threshold                => FANN_THRESHOLD,
-            ActivationFunc::ThresholdSymmetric       => FANN_THRESHOLD_SYMMETRIC,
-            ActivationFunc::Sigmoid                  => FANN_SIGMOID,
-            ActivationFunc::SigmoidStepwise          => FANN_SIGMOID_STEPWISE,
-            ActivationFunc::SigmoidSymmetric         => FANN_SIGMOID_SYMMETRIC,
+            ActivationFunc::Linear => FANN_LINEAR,
+            ActivationFunc::Threshold => FANN_THRESHOLD,
+            ActivationFunc::ThresholdSymmetric => FANN_THRESHOLD_SYMMETRIC,
+            ActivationFunc::Sigmoid => FANN_SIGMOID,
+            ActivationFunc::SigmoidStepwise => FANN_SIGMOID_STEPWISE,
+            ActivationFunc::SigmoidSymmetric => FANN_SIGMOID_SYMMETRIC,
             ActivationFunc::SigmoidSymmetricStepwise => FANN_SIGMOID_SYMMETRIC_STEPWISE,
-            ActivationFunc::Gaussian                 => FANN_GAUSSIAN,
-            ActivationFunc::GaussianSymmetric        => FANN_GAUSSIAN_SYMMETRIC,
-            ActivationFunc::GaussianStepwise         => FANN_GAUSSIAN_STEPWISE,
-            ActivationFunc::Elliott                  => FANN_ELLIOTT,
-            ActivationFunc::ElliottSymmetric         => FANN_ELLIOTT_SYMMETRIC,
-            ActivationFunc::LinearPiece              => FANN_LINEAR_PIECE,
-            ActivationFunc::LinearPieceSymmetric     => FANN_LINEAR_PIECE_SYMMETRIC,
-            ActivationFunc::SinSymmetric             => FANN_SIN_SYMMETRIC,
-            ActivationFunc::CosSymmetric             => FANN_COS_SYMMETRIC,
-            ActivationFunc::Sin                      => FANN_SIN,
-            ActivationFunc::Cos                      => FANN_COS,
+            ActivationFunc::Gaussian => FANN_GAUSSIAN,
+            ActivationFunc::GaussianSymmetric => FANN_GAUSSIAN_SYMMETRIC,
+            ActivationFunc::GaussianStepwise => FANN_GAUSSIAN_STEPWISE,
+            ActivationFunc::Elliott => FANN_ELLIOTT,
+            ActivationFunc::ElliottSymmetric => FANN_ELLIOTT_SYMMETRIC,
+            ActivationFunc::LinearPiece => FANN_LINEAR_PIECE,
+            ActivationFunc::LinearPieceSymmetric => FANN_LINEAR_PIECE_SYMMETRIC,
+            ActivationFunc::SinSymmetric => FANN_SIN_SYMMETRIC,
+            ActivationFunc::CosSymmetric => FANN_COS_SYMMETRIC,
+            ActivationFunc::Sin => FANN_SIN,
+            ActivationFunc::Cos => FANN_COS,
         }
     }
 }
-

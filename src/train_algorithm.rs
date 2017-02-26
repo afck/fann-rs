@@ -26,9 +26,7 @@ pub struct BatchParams {
 
 impl Default for BatchParams {
     fn default() -> BatchParams {
-        BatchParams {
-            learning_rate: 0.7,
-        }
+        BatchParams { learning_rate: 0.7 }
     }
 }
 

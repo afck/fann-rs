@@ -112,15 +112,19 @@ pub type Connection = fann_connection;
 /// Convert a path to a `CString`.
 fn to_filename<P: AsRef<Path>>(path: P) -> Result<CString, FannError> {
     match path.as_ref().to_str().map(CString::new) {
-        None => Err(FannError {
-                    error_type: FannErrorType::CantOpenTdR,
-                    error_str: "File name contains invalid unicode characters".to_owned(),
-                }),
-        Some(Err(e)) => Err(FannError {
-                            error_type: FannErrorType::CantOpenTdR,
-                            error_str: format!("File name contains a nul byte at position {}",
-                                               e.nul_position()),
-                        }),
+        None => {
+            Err(FannError {
+                error_type: FannErrorType::CantOpenTdR,
+                error_str: "File name contains invalid unicode characters".to_owned(),
+            })
+        }
+        Some(Err(e)) => {
+            Err(FannError {
+                error_type: FannErrorType::CantOpenTdR,
+                error_str: format!("File name contains a nul byte at position {}",
+                                   e.nul_position()),
+            })
+        }
         Some(Ok(cs)) => Ok(cs),
     }
 }
@@ -147,7 +151,11 @@ pub enum CallbackResult {
 
 impl CallbackResult {
     pub fn stop_if(condition: bool) -> CallbackResult {
-        if condition { CallbackResult::Stop } else { CallbackResult::Continue }
+        if condition {
+            CallbackResult::Stop
+        } else {
+            CallbackResult::Continue
+        }
     }
 }
 
@@ -198,8 +206,12 @@ impl<'a> FannTrainer<'a> {
     pub fn with_callback(self,
                          interval: c_uint,
                          callback: &'a Fn(&Fann, &TrainData, c_uint) -> CallbackResult)
-            -> FannTrainer<'a> {
-        FannTrainer { callback: Some(callback), interval: interval, ..self }
+                         -> FannTrainer<'a> {
+        FannTrainer {
+            callback: Some(callback),
+            interval: interval,
+            ..self
+        }
     }
 
     /// Use the Cascade2 algorithm: This adds neurons to the neural network while training, starting
@@ -219,7 +231,8 @@ impl<'a> FannTrainer<'a> {
                                _: c_uint,
                                _: c_uint,
                                _: c_float,
-                               steps: c_uint) -> c_int {
+                               steps: c_uint)
+                               -> c_int {
         // TODO: This is an ugly hack - find better ways to solve the following issues:
         // * The C callback is not a closure, so it cannot access the user-supplied argument.
         //   https://aatch.github.io/blog/2015/01/17/unboxed-closures-and-ffi-callbacks doesn't
@@ -241,8 +254,8 @@ impl<'a> FannTrainer<'a> {
             let callback = (*trainer).callback.unwrap();
             callback((*trainer).fann, data, steps)
         }) {
-            CallbackResult::Stop      => -1,
-            CallbackResult::Continue  =>  0,
+            CallbackResult::Stop => -1,
+            CallbackResult::Continue => 0,
         }
     }
 
@@ -265,9 +278,16 @@ impl<'a> FannTrainer<'a> {
                 TRAINER.with(|cell| *cell.borrow_mut() = transmute(&mut *self));
                 fann_set_callback(self.fann.raw, Some(FannTrainer::raw_callback));
             }
-            let raw_train_fn =
-                if self.cascade { fann_cascadetrain_on_data } else { fann_train_on_data };
-            raw_train_fn(self.fann.raw, raw_data, max_steps, self.interval, desired_error);
+            let raw_train_fn = if self.cascade {
+                fann_cascadetrain_on_data
+            } else {
+                fann_train_on_data
+            };
+            raw_train_fn(self.fann.raw,
+                         raw_data,
+                         max_steps,
+                         self.interval,
+                         desired_error);
             if self.callback.is_some() {
                 fann_set_callback(self.fann.raw, None);
                 TRAINER.with(|cell| *cell.borrow_mut() = null_mut());
@@ -347,9 +367,7 @@ impl Fann {
     /// Read a neural network from a file.
     pub fn from_file<P: AsRef<Path>>(path: P) -> FannResult<Fann> {
         let filename = try!(to_filename(path));
-        unsafe {
-            Fann::from_raw(fann_create_from_file(filename.as_ptr()))
-        }
+        unsafe { Fann::from_raw(fann_create_from_file(filename.as_ptr())) }
     }
 
     /// Save the network to a configuration file.
@@ -423,7 +441,8 @@ impl Fann {
             Err(FannError {
                 error_type: FannErrorType::IndexOutOfBound,
                 error_str: format!("Input has length {}, but there are {} input neurons",
-                                   input.len(), num_input),
+                                   input.len(),
+                                   num_input),
             })
         }
     }
@@ -438,7 +457,8 @@ impl Fann {
             Err(FannError {
                 error_type: FannErrorType::IndexOutOfBound,
                 error_str: format!("Output has length {}, but there are {} output neurons",
-                                   output.len(), num_output),
+                                   output.len(),
+                                   num_output),
             })
         }
     }
@@ -484,8 +504,10 @@ impl Fann {
     /// but does not change the network.
     ///
     /// Returns the actual output of the network.
-    pub fn test(&mut self, input: &[FannType], desired_output: &[FannType])
-            -> FannResult<Vec<FannType>> {
+    pub fn test(&mut self,
+                input: &[FannType],
+                desired_output: &[FannType])
+                -> FannResult<Vec<FannType>> {
         try!(self.check_input_size(input));
         try!(self.check_output_size(desired_output));
         let num_output = self.get_num_output() as usize;
@@ -521,7 +543,9 @@ impl Fann {
 
     /// Reset the mean square error and bit fail count.
     pub fn reset_mse_and_bit_fail(&mut self) {
-        unsafe { fann_reset_MSE(self.raw); }
+        unsafe {
+            fann_reset_MSE(self.raw);
+        }
     }
 
     /// Run the input through the neural network and returns the output. The length of the input
@@ -663,7 +687,7 @@ impl Fann {
         let steepness = unsafe { fann_get_activation_steepness(self.raw, layer, neuron) };
         match steepness {
             -1.0 => None,
-            s    => Some(s),
+            s => Some(s),
         }
     }
 
@@ -744,8 +768,9 @@ impl Fann {
             let num_af = fann_get_cascade_activation_functions_count(self.raw) as usize;
             let af_enum_ptr = fann_get_cascade_activation_functions(self.raw);
             let af_enums = Vec::from_raw_parts(af_enum_ptr, num_af, num_af);
-            let activation_functions = af_enums.iter().map(|&af_enum|
-                ActivationFunc::from_fann_activationfunc_enum(af_enum).unwrap()).collect();
+            let activation_functions = af_enums.iter()
+                .map(|&af_enum| ActivationFunc::from_fann_activationfunc_enum(af_enum).unwrap())
+                .collect();
             forget(af_enums);
             let num_st = fann_get_cascade_activation_steepnesses_count(self.raw) as usize;
             let mut activation_steepnesses = Vec::with_capacity(num_st);
@@ -770,8 +795,10 @@ impl Fann {
 
     /// Set cascade training parameters.
     pub fn set_cascade_params(&mut self, params: &CascadeParams) {
-        let af_enums: Vec<_> = params.activation_functions.iter().map(|af|
-            af.to_fann_activationfunc_enum()).collect();
+        let af_enums: Vec<_> = params.activation_functions
+            .iter()
+            .map(|af| af.to_fann_activationfunc_enum())
+            .collect();
         unsafe {
             fann_set_cascade_output_change_fraction(self.raw, params.output_change_fraction);
             fann_set_cascade_output_stagnation_epochs(self.raw, params.output_stagnation_epochs);
@@ -802,12 +829,12 @@ impl Fann {
                     learning_rate: fann_get_learning_rate(self.raw),
                 })
             },
-            FANN_TRAIN_BATCH       => unsafe {
+            FANN_TRAIN_BATCH => unsafe {
                 TrainAlgorithm::Batch(BatchParams {
                     learning_rate: fann_get_learning_rate(self.raw),
                 })
             },
-            FANN_TRAIN_RPROP       => unsafe {
+            FANN_TRAIN_RPROP => unsafe {
                 TrainAlgorithm::Rprop(RpropParams {
                     decrease_factor: fann_get_rprop_decrease_factor(self.raw),
                     increase_factor: fann_get_rprop_increase_factor(self.raw),
@@ -816,7 +843,7 @@ impl Fann {
                     delta_zero: fann_get_rprop_delta_zero(self.raw),
                 })
             },
-            FANN_TRAIN_QUICKPROP   => unsafe {
+            FANN_TRAIN_QUICKPROP => unsafe {
                 TrainAlgorithm::Quickprop(QuickpropParams {
                     decay: fann_get_quickprop_decay(self.raw),
                     mu: fann_get_quickprop_mu(self.raw),
@@ -859,47 +886,53 @@ impl Fann {
     pub fn set_input_scaling_params(&mut self,
                                     data: &TrainData,
                                     new_input_min: c_float,
-                                    new_input_max: c_float) -> FannResult<()> {
+                                    new_input_max: c_float)
+                                    -> FannResult<()> {
         unsafe {
             let result = fann_set_input_scaling_params(self.raw,
                                                        data.get_raw(),
                                                        new_input_min,
                                                        new_input_max);
-            FannError::check_zero(result, self.raw as *mut fann_error,
+            FannError::check_zero(result,
+                                  self.raw as *mut fann_error,
                                   "Error calculating scaling parameters")
         }
     }
 
     /// Calculate output scaling parameters for future use based on the given training data.
     pub fn set_output_scaling_params(&mut self,
-                                    data: &TrainData,
-                                    new_output_min: c_float,
-                                    new_output_max: c_float) -> FannResult<()> {
+                                     data: &TrainData,
+                                     new_output_min: c_float,
+                                     new_output_max: c_float)
+                                     -> FannResult<()> {
         unsafe {
             let result = fann_set_output_scaling_params(self.raw,
-                                                       data.get_raw(),
-                                                       new_output_min,
-                                                       new_output_max);
-            FannError::check_zero(result, self.raw as *mut fann_error,
+                                                        data.get_raw(),
+                                                        new_output_min,
+                                                        new_output_max);
+            FannError::check_zero(result,
+                                  self.raw as *mut fann_error,
                                   "Error calculating scaling parameters")
         }
     }
 
     /// Calculate scaling parameters for future use based on the given training data.
     pub fn set_scaling_params(&mut self,
-                                    data: &TrainData,
-                                    new_input_min: c_float,
-                                    new_input_max: c_float,
-                                    new_output_min: c_float,
-                                    new_output_max: c_float) -> FannResult<()> {
+                              data: &TrainData,
+                              new_input_min: c_float,
+                              new_input_max: c_float,
+                              new_output_min: c_float,
+                              new_output_max: c_float)
+                              -> FannResult<()> {
         unsafe {
             let result = fann_set_scaling_params(self.raw,
-                                                       data.get_raw(),
-                                                       new_input_min,
-                                                       new_input_max,
-                                                       new_output_min,
-                                                       new_output_max);
-            FannError::check_zero(result, self.raw as *mut fann_error,
+                                                 data.get_raw(),
+                                                 new_input_min,
+                                                 new_input_max,
+                                                 new_output_min,
+                                                 new_output_max);
+            FannError::check_zero(result,
+                                  self.raw as *mut fann_error,
                                   "Error calculating scaling parameters")
         }
     }
@@ -956,7 +989,9 @@ impl Fann {
 
 impl Drop for Fann {
     fn drop(&mut self) {
-        unsafe { fann_destroy(self.raw); }
+        unsafe {
+            fann_destroy(self.raw);
+        }
     }
 }
 
@@ -978,9 +1013,9 @@ mod tests {
         fann.set_activation_func_hidden(ActivationFunc::SigmoidSymmetric);
         fann.set_activation_func_output(ActivationFunc::SigmoidSymmetric);
         fann.on_file("test_files/xor.data").train(max_epochs, desired_error).unwrap();
-        assert!(EPSILON > ( 1.0 - fann.run(&[-1.0,  1.0]).unwrap()[0]).abs());
-        assert!(EPSILON > ( 1.0 - fann.run(&[ 1.0, -1.0]).unwrap()[0]).abs());
-        assert!(EPSILON > (-1.0 - fann.run(&[ 1.0,  1.0]).unwrap()[0]).abs());
+        assert!(EPSILON > (1.0 - fann.run(&[-1.0, 1.0]).unwrap()[0]).abs());
+        assert!(EPSILON > (1.0 - fann.run(&[1.0, -1.0]).unwrap()[0]).abs());
+        assert!(EPSILON > (-1.0 - fann.run(&[1.0, 1.0]).unwrap()[0]).abs());
         assert!(EPSILON > (-1.0 - fann.run(&[-1.0, -1.0]).unwrap()[0]).abs());
     }
 
@@ -988,10 +1023,13 @@ mod tests {
     fn test_activation_func() {
         let mut fann = Fann::new(&[4, 3, 3, 1]).unwrap();
         // Don't print the expected errors:
-        unsafe { fann_sys::fann_set_error_log(fann.raw as *mut fann_sys::fann_error, null_mut()); }
+        unsafe {
+            fann_sys::fann_set_error_log(fann.raw as *mut fann_sys::fann_error, null_mut());
+        }
         assert!(fann.get_activation_func(0, 1).is_err());
         assert!(fann.get_activation_func(4, 1).is_err());
-        assert_eq!(Ok(ActivationFunc::SigmoidStepwise), fann.get_activation_func(2, 2));
+        assert_eq!(Ok(ActivationFunc::SigmoidStepwise),
+                   fann.get_activation_func(2, 2));
         fann.set_activation_func(ActivationFunc::Sin, 2, 2);
         assert_eq!(Ok(ActivationFunc::Sin), fann.get_activation_func(2, 2));
     }
@@ -1000,10 +1038,8 @@ mod tests {
     fn test_train_algorithm() {
         let mut fann = Fann::new(&[4, 3, 3, 1]).unwrap();
         assert_eq!(TrainAlgorithm::default(), fann.get_train_algorithm());
-        let quickprop = TrainAlgorithm::Quickprop(QuickpropParams {
-            decay: -0.0002,
-            ..Default::default()
-        });
+        let quickprop =
+            TrainAlgorithm::Quickprop(QuickpropParams { decay: -0.0002, ..Default::default() });
         fann.set_train_algorithm(quickprop);
         assert_eq!(quickprop, fann.get_train_algorithm());
     }
@@ -1011,14 +1047,18 @@ mod tests {
     #[test]
     fn test_layer_sizes() {
         let fann = Fann::new(&[4, 3, 3, 1]).unwrap();
-        assert_eq!(vec!(4, 3, 3, 1), fann.get_layer_sizes());
-        assert_eq!(vec!(1, 1, 1, 0), fann.get_bias_counts());
+        assert_eq!(vec![4, 3, 3, 1], fann.get_layer_sizes());
+        assert_eq!(vec![1, 1, 1, 0], fann.get_bias_counts());
     }
 
     #[test]
     fn test_get_set_connections() {
         let mut fann = Fann::new(&[1, 1]).unwrap();
-        let connection = Connection { from_neuron: 1, to_neuron: 2, weight: 0.123 };
+        let connection = Connection {
+            from_neuron: 1,
+            to_neuron: 2,
+            weight: 0.123,
+        };
         fann.set_connections(&[connection]);
         assert_eq!(2, fann.get_total_connections()); // 2 because of the bias neuron in layer 0.
         assert_eq!(connection, fann.get_connections()[1]);
@@ -1035,17 +1075,21 @@ mod tests {
         let mut fann = Fann::new(&[2, 3, 1]).unwrap();
         fann.set_activation_func_hidden(ActivationFunc::SigmoidSymmetric);
         fann.set_activation_func_output(ActivationFunc::SigmoidSymmetric);
-        let td = TrainData::from_callback(4, 2, 1, Box::new(|num| match num {
-            0 => (vec!(-1.0,  1.0), vec!( 1.0)),
-            1 => (vec!( 1.0, -1.0), vec!( 1.0)),
-            2 => (vec!(-1.0, -1.0), vec!(-1.0)),
-            3 => (vec!( 1.0,  1.0), vec!(-1.0)),
-            _ => unreachable!(),
-        })).unwrap();
+        let td = TrainData::from_callback(4,
+                                          2,
+                                          1,
+                                          Box::new(|num| match num {
+                                              0 => (vec![-1.0, 1.0], vec![1.0]),
+                                              1 => (vec![1.0, -1.0], vec![1.0]),
+                                              2 => (vec![-1.0, -1.0], vec![-1.0]),
+                                              3 => (vec![1.0, 1.0], vec![-1.0]),
+                                              _ => unreachable!(),
+                                          }))
+            .unwrap();
         fann.on_data(&td).train(500000, 0.0001).unwrap();
-        assert!(EPSILON > ( 1.0 - fann.run(&[-1.0,  1.0]).unwrap()[0]).abs());
-        assert!(EPSILON > ( 1.0 - fann.run(&[ 1.0, -1.0]).unwrap()[0]).abs());
-        assert!(EPSILON > (-1.0 - fann.run(&[ 1.0,  1.0]).unwrap()[0]).abs());
+        assert!(EPSILON > (1.0 - fann.run(&[-1.0, 1.0]).unwrap()[0]).abs());
+        assert!(EPSILON > (1.0 - fann.run(&[1.0, -1.0]).unwrap()[0]).abs());
+        assert!(EPSILON > (-1.0 - fann.run(&[1.0, 1.0]).unwrap()[0]).abs());
         assert!(EPSILON > (-1.0 - fann.run(&[-1.0, -1.0]).unwrap()[0]).abs());
     }
 
@@ -1060,12 +1104,14 @@ mod tests {
         let callback_epochs = RefCell::new(Vec::new());
         let cb = |fann: &Fann, train_data: &TrainData, epochs: c_uint| {
             assert_eq!(raw, fann.raw);
-            unsafe { assert_eq!(xor_data.get_raw(), train_data.get_raw()); }
+            unsafe {
+                assert_eq!(xor_data.get_raw(), train_data.get_raw());
+            }
             callback_epochs.borrow_mut().push(epochs);
             CallbackResult::stop_if(epochs == 40) // Stop after 40 epochs.
         };
         fann.on_data(&xor_data).with_callback(10, &cb).train(100, 0.1).unwrap();
         // The interval was 10 epochs. Also, FANN always runs the callback after the first epoch.
-        assert_eq!(vec!(1, 10, 20, 30, 40), *callback_epochs.borrow());
+        assert_eq!(vec![1, 10, 20, 30, 40], *callback_epochs.borrow());
     }
 }
