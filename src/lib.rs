@@ -261,9 +261,9 @@ impl<'a> FannTrainer<'a> {
 
     fn get_data(&'a self) -> FannResult<&'a TrainData> {
         match self.cur_data {
-            CurrentTrainData::Own(Ok(ref data)) => Ok(&data),
+            CurrentTrainData::Ref(&ref data) |
+            CurrentTrainData::Own(Ok(ref data)) => Ok(data),
             CurrentTrainData::Own(Err(ref err)) => Err(err.clone()),
-            CurrentTrainData::Ref(ref data) => Ok(data),
         }
     }
 
