@@ -57,8 +57,9 @@ impl CascadeParams {
     /// For every combination of activation function and steepness, `num_candidate_groups` such
     /// neurons, with different initial weights, are trained.
     pub fn get_num_candidates(&self) -> c_uint {
-        self.activation_functions.len() as c_uint * self.activation_steepnesses.len() as c_uint *
-        self.num_candidate_groups
+        self.activation_functions.len() as c_uint
+            * self.activation_steepnesses.len() as c_uint
+            * self.num_candidate_groups
     }
 }
 
@@ -73,16 +74,18 @@ impl Default for CascadeParams {
             weight_multiplier: 0.4,
             max_out_epochs: 150,
             max_cand_epochs: 150,
-            activation_functions: vec![ActivationFunc::Sigmoid,
-                                       ActivationFunc::SigmoidSymmetric,
-                                       ActivationFunc::Gaussian,
-                                       ActivationFunc::GaussianSymmetric,
-                                       ActivationFunc::Elliott,
-                                       ActivationFunc::ElliottSymmetric,
-                                       ActivationFunc::SinSymmetric,
-                                       ActivationFunc::CosSymmetric,
-                                       ActivationFunc::Sin,
-                                       ActivationFunc::Cos],
+            activation_functions: vec![
+                ActivationFunc::Sigmoid,
+                ActivationFunc::SigmoidSymmetric,
+                ActivationFunc::Gaussian,
+                ActivationFunc::GaussianSymmetric,
+                ActivationFunc::Elliott,
+                ActivationFunc::ElliottSymmetric,
+                ActivationFunc::SinSymmetric,
+                ActivationFunc::CosSymmetric,
+                ActivationFunc::Sin,
+                ActivationFunc::Cos,
+            ],
             activation_steepnesses: vec![0.25, 0.5, 0.75, 1.0],
             num_candidate_groups: 2,
         }

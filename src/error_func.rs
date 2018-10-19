@@ -21,8 +21,8 @@ impl ErrorFunc {
     }
 
     /// Return the `fann_sys::fann_errorfunc_enum` corresponding to this `ErrorFunc`.
-    pub fn to_errorfunc_enum(&self) -> fann_errorfunc_enum {
-        match *self {
+    pub fn to_errorfunc_enum(self) -> fann_errorfunc_enum {
+        match self {
             ErrorFunc::Linear => FANN_ERRORFUNC_LINEAR,
             ErrorFunc::Tanh => FANN_ERRORFUNC_TANH,
         }

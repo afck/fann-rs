@@ -1,5 +1,5 @@
-use fann_sys::*;
 pub use error::{FannError, FannErrorType, FannResult};
+use fann_sys::*;
 
 /// The activation functions used for the neurons during training. They can either be set for a
 /// group of neurons using `set_activation_func_hidden` and `set_activation_func_output`, or for a
@@ -156,15 +156,14 @@ pub enum ActivationFunc {
 
 impl ActivationFunc {
     /// Create an `ActivationFunc` from a `fann_sys::fann_activationfunc_enum`.
-    pub fn from_fann_activationfunc_enum(af_enum: fann_activationfunc_enum)
-                                         -> FannResult<ActivationFunc> {
+    pub fn from_fann_activationfunc_enum(
+        af_enum: fann_activationfunc_enum,
+    ) -> FannResult<ActivationFunc> {
         match af_enum {
-            FANN_NONE => {
-                Err(FannError {
-                    error_type: FannErrorType::IndexOutOfBound,
-                    error_str: "Neuron or layer index is out of bound.".to_owned(),
-                })
-            }
+            FANN_NONE => Err(FannError {
+                error_type: FannErrorType::IndexOutOfBound,
+                error_str: "Neuron or layer index is out of bound.".to_owned(),
+            }),
             FANN_LINEAR => Ok(ActivationFunc::Linear),
             FANN_THRESHOLD => Ok(ActivationFunc::Threshold),
             FANN_THRESHOLD_SYMMETRIC => Ok(ActivationFunc::ThresholdSymmetric),
@@ -187,8 +186,8 @@ impl ActivationFunc {
     }
 
     /// Return the `fann_sys::fann_activationfunc_enum` corresponding to this `ActivationFunc`.
-    pub fn to_fann_activationfunc_enum(&self) -> fann_activationfunc_enum {
-        match *self {
+    pub fn to_fann_activationfunc_enum(self) -> fann_activationfunc_enum {
+        match self {
             ActivationFunc::Linear => FANN_LINEAR,
             ActivationFunc::Threshold => FANN_THRESHOLD,
             ActivationFunc::ThresholdSymmetric => FANN_THRESHOLD_SYMMETRIC,

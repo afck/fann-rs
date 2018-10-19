@@ -20,8 +20,8 @@ impl StopFunc {
     }
 
     /// Return the `fann_sys::fann_stopfunc_enum` corresponding to this `StopFunc`.
-    pub fn to_stopfunc_enum(&self) -> fann_stopfunc_enum {
-        match *self {
+    pub fn to_stopfunc_enum(self) -> fann_stopfunc_enum {
+        match self {
             StopFunc::Mse => FANN_STOPFUNC_MSE,
             StopFunc::Bit => FANN_STOPFUNC_BIT,
         }

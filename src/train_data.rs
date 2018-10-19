@@ -1,12 +1,12 @@
 extern crate fann_sys;
 
+use super::{to_filename, Fann};
 use error::{FannError, FannErrorType, FannResult};
 use fann_sys::*;
 use libc::c_uint;
 use std::cell::RefCell;
 use std::path::Path;
 use std::ptr::copy_nonoverlapping;
-use super::{Fann, to_filename};
 
 pub type TrainCallback = Fn(c_uint) -> (Vec<fann_type>, Vec<fann_type>);
 
@@ -40,23 +40,26 @@ impl TrainData {
         unsafe {
             let raw = fann_read_train_from_file(filename.as_ptr());
             try!(FannError::check_no_error(raw as *mut fann_error));
-            Ok(TrainData { raw: raw })
+            Ok(TrainData { raw })
         }
     }
 
     /// Create training data using the given callback which for each number between `0` (included)
     /// and `num_data` (excluded) returns a pair of input and output vectors with `num_input` and
     /// `num_output` entries respectively.
-    pub fn from_callback(num_data: c_uint,
-                         num_input: c_uint,
-                         num_output: c_uint,
-                         cb: Box<TrainCallback>)
-                         -> FannResult<TrainData> {
-        extern "C" fn raw_callback(num: c_uint,
-                                   num_input: c_uint,
-                                   num_output: c_uint,
-                                   input: *mut fann_type,
-                                   output: *mut fann_type) {
+    pub fn from_callback(
+        num_data: c_uint,
+        num_input: c_uint,
+        num_output: c_uint,
+        cb: Box<TrainCallback>,
+    ) -> FannResult<TrainData> {
+        extern "C" fn raw_callback(
+            num: c_uint,
+            num_input: c_uint,
+            num_output: c_uint,
+            input: *mut fann_type,
+            output: *mut fann_type,
+        ) {
             // Call the callback we stored in the thread-local container.
             let (in_vec, out_vec) = CALLBACK.with(|cell| cell.borrow().as_ref().unwrap()(num));
             // Make sure it returned data of the correct size, then copy the data.
@@ -70,14 +73,16 @@ impl TrainData {
         unsafe {
             // Put the callback into the thread-local container.
             CALLBACK.with(|cell| *cell.borrow_mut() = Some(cb));
-            let raw = fann_create_train_from_callback(num_data,
-                                                      num_input,
-                                                      num_output,
-                                                      Some(raw_callback));
+            let raw = fann_create_train_from_callback(
+                num_data,
+                num_input,
+                num_output,
+                Some(raw_callback),
+            );
             // Remove it from the thread-local container to free the memory.
             CALLBACK.with(|cell| *cell.borrow_mut() = None);
             try!(FannError::check_no_error(raw as *mut fann_error));
-            Ok(TrainData { raw: raw })
+            Ok(TrainData { raw })
         }
     }
 
@@ -103,7 +108,7 @@ impl TrainData {
         unsafe {
             let raw = fann_merge_train_data(data1.raw, data2.raw);
             try!(FannError::check_no_error(raw as *mut fann_error));
-            Ok(TrainData { raw: raw })
+            Ok(TrainData { raw })
         }
     }
 
@@ -113,7 +118,7 @@ impl TrainData {
         unsafe {
             let raw = fann_subset_train_data(self.raw, pos, length);
             try!(FannError::check_no_error(raw as *mut fann_error));
-            Ok(TrainData { raw: raw })
+            Ok(TrainData { raw })
         }
     }
 
@@ -199,7 +204,7 @@ impl Clone for TrainData {
             if FannError::check_no_error(raw as *mut fann_error).is_err() {
                 panic!("Unable to clone TrainData.");
             }
-            TrainData { raw: raw }
+            TrainData { raw }
         }
     }
 }
