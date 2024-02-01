@@ -277,7 +277,7 @@ impl<'a> FannTrainer<'a> {
     #[cfg_attr(feature = "cargo-clippy", allow(useless_transmute))]
     pub fn train(&mut self, max_steps: c_uint, desired_error: c_float) -> FannResult<()> {
         unsafe {
-            let raw_data = try!(self.get_data()).get_raw();
+            let raw_data = self.get_data()?.get_raw();
             if self.callback.is_some() {
                 TRAINER.with(|cell| *cell.borrow_mut() = transmute(&mut *self));
                 fann_set_callback(self.fann.raw, Some(FannTrainer::raw_callback));
@@ -314,7 +314,7 @@ pub struct Fann {
 
 impl Fann {
     unsafe fn from_raw(raw: *mut fann) -> FannResult<Fann> {
-        try!(FannError::check_no_error(raw as *mut fann_error));
+        FannError::check_no_error(raw as *mut fann_error)?;
         Ok(Fann { raw })
     }
 
@@ -377,7 +377,7 @@ impl Fann {
 
     /// Read a neural network from a file.
     pub fn from_file<P: AsRef<Path>>(path: P) -> FannResult<Fann> {
-        let filename = try!(to_filename(path));
+        let filename = to_filename(path)?;
         unsafe { Fann::from_raw(fann_create_from_file(filename.as_ptr())) }
     }
 
@@ -386,7 +386,7 @@ impl Fann {
     /// The file will contain all information about the neural network, except parameters generated
     /// during training, like mean square error and the bit fail limit.
     pub fn save<P: AsRef<Path>>(&self, path: P) -> FannResult<()> {
-        let filename = try!(to_filename(path));
+        let filename = to_filename(path)?;
         unsafe {
             let result = fann_save(self.raw, filename.as_ptr());
             FannError::check_zero(result, self.raw as *mut fann_error, "Error saving network")
@@ -482,10 +482,10 @@ impl Fann {
     /// `TrainAlg`), since only one pattern is presented.
     pub fn train(&mut self, input: &[FannType], desired_output: &[FannType]) -> FannResult<()> {
         unsafe {
-            try!(self.check_input_size(input));
-            try!(self.check_output_size(desired_output));
+            self.check_input_size(input)?;
+            self.check_output_size(desired_output)?;
             fann_train(self.raw, input.as_ptr(), desired_output.as_ptr());
-            try!(FannError::check_no_error(self.raw as *mut fann_error));
+            FannError::check_no_error(self.raw as *mut fann_error)?;
         }
         Ok(())
     }
@@ -510,7 +510,7 @@ impl Fann {
     pub fn train_epoch(&mut self, data: &TrainData) -> FannResult<c_float> {
         unsafe {
             let mse = fann_train_epoch(self.raw, data.get_raw());
-            try!(FannError::check_no_error(self.raw as *mut fann_error));
+            FannError::check_no_error(self.raw as *mut fann_error)?;
             Ok(mse)
         }
     }
@@ -524,13 +524,13 @@ impl Fann {
         input: &[FannType],
         desired_output: &[FannType],
     ) -> FannResult<Vec<FannType>> {
-        try!(self.check_input_size(input));
-        try!(self.check_output_size(desired_output));
+        self.check_input_size(input)?;
+        self.check_output_size(desired_output)?;
         let num_output = self.get_num_output() as usize;
         let mut result = Vec::with_capacity(num_output);
         unsafe {
             let output = fann_test(self.raw, input.as_ptr(), desired_output.as_ptr());
-            try!(FannError::check_no_error(self.raw as *mut fann_error));
+            FannError::check_no_error(self.raw as *mut fann_error)?;
             copy_nonoverlapping(output, result.as_mut_ptr(), num_output);
             result.set_len(num_output);
         }
@@ -541,7 +541,7 @@ impl Fann {
     pub fn test_data(&mut self, data: &TrainData) -> FannResult<c_float> {
         unsafe {
             let mse = fann_test_data(self.raw, data.get_raw());
-            try!(FannError::check_no_error(self.raw as *mut fann_error));
+            FannError::check_no_error(self.raw as *mut fann_error)?;
             Ok(mse)
         }
     }
@@ -568,12 +568,12 @@ impl Fann {
     /// must equal the number of input neurons and the length of the output will equal the number
     /// of output neurons.
     pub fn run(&self, input: &[FannType]) -> FannResult<Vec<FannType>> {
-        try!(self.check_input_size(input));
+        self.check_input_size(input)?;
         let num_output = self.get_num_output() as usize;
         let mut result = Vec::with_capacity(num_output);
         unsafe {
             let output = fann_run(self.raw, input.as_ptr());
-            try!(FannError::check_no_error(self.raw as *mut fann_error));
+            FannError::check_no_error(self.raw as *mut fann_error)?;
             copy_nonoverlapping(output, result.as_mut_ptr(), num_output);
             result.set_len(num_output);
         }
@@ -670,7 +670,7 @@ impl Fann {
     /// `layer` must be at least 1.
     pub fn get_activation_func(&self, layer: c_int, neuron: c_int) -> FannResult<ActivationFunc> {
         let af_enum = unsafe { fann_get_activation_function(self.raw, layer, neuron) };
-        unsafe { try!(FannError::check_no_error(self.raw as *mut fann_error)) };
+        unsafe { FannError::check_no_error(self.raw as *mut fann_error)? };
         ActivationFunc::from_fann_activationfunc_enum(af_enum)
     }
 

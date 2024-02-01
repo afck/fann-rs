@@ -36,10 +36,10 @@ impl TrainData {
     /// outputdata separated by space
     /// ```
     pub fn from_file<P: AsRef<Path>>(path: P) -> FannResult<TrainData> {
-        let filename = try!(to_filename(path));
+        let filename = to_filename(path)?;
         unsafe {
             let raw = fann_read_train_from_file(filename.as_ptr());
-            try!(FannError::check_no_error(raw as *mut fann_error));
+            FannError::check_no_error(raw as *mut fann_error)?;
             Ok(TrainData { raw })
         }
     }
@@ -81,17 +81,17 @@ impl TrainData {
             );
             // Remove it from the thread-local container to free the memory.
             CALLBACK.with(|cell| *cell.borrow_mut() = None);
-            try!(FannError::check_no_error(raw as *mut fann_error));
+            FannError::check_no_error(raw as *mut fann_error)?;
             Ok(TrainData { raw })
         }
     }
 
     /// Save the training data to a file.
     pub fn save<P: AsRef<Path>>(&self, path: P) -> FannResult<()> {
-        let filename = try!(to_filename(path));
+        let filename = to_filename(path)?;
         unsafe {
             let result = fann_save_train(self.raw, filename.as_ptr());
-            try!(FannError::check_no_error(self.raw as *mut fann_error));
+            FannError::check_no_error(self.raw as *mut fann_error)?;
             if result == -1 {
                 Err(FannError {
                     error_type: FannErrorType::CantSaveFile,
@@ -107,7 +107,7 @@ impl TrainData {
     pub fn merge(data1: &TrainData, data2: &TrainData) -> FannResult<TrainData> {
         unsafe {
             let raw = fann_merge_train_data(data1.raw, data2.raw);
-            try!(FannError::check_no_error(raw as *mut fann_error));
+            FannError::check_no_error(raw as *mut fann_error)?;
             Ok(TrainData { raw })
         }
     }
@@ -117,7 +117,7 @@ impl TrainData {
     pub fn subset(&self, pos: c_uint, length: c_uint) -> FannResult<TrainData> {
         unsafe {
             let raw = fann_subset_train_data(self.raw, pos, length);
-            try!(FannError::check_no_error(raw as *mut fann_error));
+            FannError::check_no_error(raw as *mut fann_error)?;
             Ok(TrainData { raw })
         }
     }
@@ -142,7 +142,7 @@ impl TrainData {
     pub fn scale_for(&mut self, fann: &Fann) -> FannResult<()> {
         unsafe {
             fann_scale_train(fann.raw, self.raw);
-            try!(FannError::check_no_error(fann.raw as *mut fann_error));
+            FannError::check_no_error(fann.raw as *mut fann_error)?;
             FannError::check_no_error(self.raw as *mut fann_error)
         }
     }
@@ -152,7 +152,7 @@ impl TrainData {
     pub fn descale_for(&mut self, fann: &Fann) -> FannResult<()> {
         unsafe {
             fann_descale_train(fann.raw, self.raw);
-            try!(FannError::check_no_error(fann.raw as *mut fann_error));
+            FannError::check_no_error(fann.raw as *mut fann_error)?;
             FannError::check_no_error(self.raw as *mut fann_error)
         }
     }
