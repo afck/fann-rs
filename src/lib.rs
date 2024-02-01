@@ -381,6 +381,12 @@ impl Fann {
         unsafe { Fann::from_raw(fann_create_from_file(filename.as_ptr())) }
     }
 
+    /// Create a deep copy of a neural network.
+    /// The `Clone` trait is intentionally not implemented, because this operation might fail.
+    pub fn try_clone(&self) -> FannResult<Fann> {
+        unsafe { Fann::from_raw(fann_copy(self.raw)) }
+    }
+
     /// Save the network to a configuration file.
     ///
     /// The file will contain all information about the neural network, except parameters generated
