@@ -8,7 +8,7 @@ use std::cell::RefCell;
 use std::path::Path;
 use std::ptr::copy_nonoverlapping;
 
-pub type TrainCallback = Fn(c_uint) -> (Vec<fann_type>, Vec<fann_type>);
+pub type TrainCallback = dyn Fn(c_uint) -> (Vec<fann_type>, Vec<fann_type>);
 
 // Thread-local container for user-supplied callback functions.
 // This is necessary because the raw fann_create_train_from_callback C function takes a function

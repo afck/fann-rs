@@ -162,7 +162,7 @@ impl CallbackResult {
 pub struct FannTrainer<'a> {
     fann: &'a mut Fann,
     cur_data: CurrentTrainData<'a>,
-    callback: Option<&'a Fn(&Fann, &TrainData, c_uint) -> CallbackResult>,
+    callback: Option<&'a dyn Fn(&Fann, &TrainData, c_uint) -> CallbackResult>,
     interval: c_uint,
     cascade: bool,
 }
@@ -204,7 +204,7 @@ impl<'a> FannTrainer<'a> {
     pub fn with_callback(
         self,
         interval: c_uint,
-        callback: &'a Fn(&Fann, &TrainData, c_uint) -> CallbackResult,
+        callback: &'a dyn Fn(&Fann, &TrainData, c_uint) -> CallbackResult,
     ) -> FannTrainer<'a> {
         FannTrainer {
             callback: Some(callback),
