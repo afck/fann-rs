@@ -91,8 +91,8 @@ pub type FannResult<T> = Result<T, FannError>;
 
 impl fmt::Display for FannError {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        try!(self.error_type.fmt(f));
-        try!(": ".fmt(f));
+        self.error_type.fmt(f)?;
+        ": ".fmt(f)?;
         self.error_str.fmt(f)
     }
 }
@@ -147,7 +147,7 @@ impl FannError {
         errdat: *mut fann_error,
         error_str: &str,
     ) -> FannResult<()> {
-        try!(FannError::check_no_error(errdat));
+        FannError::check_no_error(errdat)?;
         match result {
             0 => Ok(()),
             _ => Err(FannError {

@@ -16,5 +16,5 @@ keywords = ["neural", "network", "fann", "classifier", "backpropagation"]
 double = ["fann-sys/double"]
 
 [dependencies]
-fann-sys = "0.1.7"
+fann-sys = "0.1.8"
 libc = "~0.2.20"
