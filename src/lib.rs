@@ -382,6 +382,7 @@ impl Fann {
     }
 
     /// Create a deep copy of a neural network.
+    ///
     /// The `Clone` trait is intentionally not implemented, because this operation might fail.
     pub fn try_clone(&self) -> FannResult<Fann> {
         unsafe { Fann::from_raw(fann_copy(self.raw)) }
